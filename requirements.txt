@@ -1,0 +1,10 @@
+pyvista
+vtk
+numpy
+trimesh
+embreex
+matplobblib
+scipy
+tqdm
+torch
+pandas
