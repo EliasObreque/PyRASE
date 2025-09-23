@@ -19,9 +19,9 @@ from monitor import show_ray_tracing, show_ray_tracing_fast
 from ray_tracing import compute_ray_tracing, compute_ray_tracing_fast
 # a spherical model of ray tracing to validate that our model and force calculations are accurate
 
-mesh = pv.Sphere(radius = 100)
+mesh = pv.Sphere(radius = 100, theta_resolution=10, phi_resolution=10, end_theta=300)
 mesh = mesh.triangulate().clean()
-#mesh.plot(show_edges=True)
+mesh.plot(show_edges=True)
 
 ray_direction = np.array([0,0, -1])
 ray_direction = ray_direction / np.linalg.norm(ray_direction) #normalise
@@ -29,7 +29,7 @@ ray_direction = ray_direction / np.linalg.norm(ray_direction) #normalise
 bounds = mesh.bounds #(xmin, xmax, ymin, ymax, zmin, zmax)
 
 resolutions = [50, 100, 200]
-A_ = np.pi * (0.1)**2
+A_ = np.pi * (0.1) ** 2
 area_errors = []
 
 #loop over resolutions to find the optimum 

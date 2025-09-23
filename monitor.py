@@ -45,7 +45,7 @@ def show_ray_tracing(mesh, prop: dict):
     plotter.show()
 
 
-def show_ray_tracing_fast(mesh, prop: dict):
+def show_ray_tracing_fast(mesh, prop: dict, filename="3d_view.png", show_mesh=False, save_3d=True):
     x_range = prop['x_range']
     y_range = prop['y_range']
     res_x, res_y = prop['res_x'], prop['res_y']
@@ -88,9 +88,26 @@ def show_ray_tracing_fast(mesh, prop: dict):
 
     # centers = np.array(ray_starts)
     # plotter.add_mesh(centers, color="red", point_size=3)
+    w = 6 * 300
+    h = 6 * 300
     plotter.show_grid()
-    plotter.show()
+    dir_cam = np.array([1, 1, 1])
+    distance = np.max(x_range) - np.min(x_range)
 
+    pos = np.array((0.0, 0.0, 0.0), float) + 3 * distance * dir_cam
+
+    # Apply to plotter
+    plotter.camera.position = tuple(pos)
+    plotter.camera.focal_point = (0.0, 0.0, 0.0)
+    plotter.camera.up = (1.0, 0.0, 0.0)
+    if save_3d:
+        plotter.show(auto_close=False, interactive=False)
+        plotter.screenshot(filename, window_size=(1800, 1200))
+        plotter.close()
+    if show_mesh:
+        plotter.show()
+    else:
+        plotter.close()
 
 def _segments_to_polydata(p0: np.ndarray, p1: np.ndarray) -> pv.PolyData:
     assert p0.shape == p1.shape and p0.shape[1] == 3

@@ -43,60 +43,77 @@ def compute_ray_tracing(mesh: pv.PolyData, res_x, res_y):
                   'ray_starts': ray_starts, 'ray_ends': ray_ends}
     return properties
 
-def compute_ray_tracing_fast(mesh: pv.PolyData, res_x: int, res_y: int, margin: float = 10.0, z_lift: float = 50.0):
+def compute_ray_tracing_fast(mesh: pv.PolyData, res_x: int, res_y: int):
     """
-    Batched, orthographic ray casting using PyVista's multi_ray_trace.
-    - mesh: pv.PolyData (triangulated) in *mm* (PyVista default)
-    - res_x, res_y: grid resolution on the image plane
-    - margin: extra padding (mm) around the XY mesh bounds
-    - z_lift: height above the mesh max-Z to place the image plane (mm)
-    Returns:
-      dict with hit points (N,3), ray_ids (N,), cell_ids (N,), pixel size, and grids.
+    Batched, ortográfico (-Z) usando multi_ray_trace.
+    Devuelve mismos campos que tu versión, con hits ya filtrados.
     """
-    # Bounds: (xmin, xmax, ymin, ymax, zmin, zmax)
     xmin, xmax, ymin, ymax, zmin, zmax = mesh.bounds
+    x_width = abs(xmax - xmin)
+    y_width = abs(ymax - ymin)
+    z_width = abs(zmax - zmin)
+    x_range = np.linspace(xmin - x_width*0.1, xmax + x_width*0.1, res_x, dtype=np.float64)
+    y_range = np.linspace(ymin - y_width*0.1, ymax + y_width*0.1, res_y, dtype=np.float64)
+    z0 = zmax + z_width * 0.6
 
-    # Uniform XY ranges (with padding)
-    x_range = np.linspace(xmin - margin, xmax + margin, res_x, dtype=np.float64)
-    y_range = np.linspace(ymin - margin, ymax + margin, res_y, dtype=np.float64)
-
-    # Image plane Z above the mesh
-    z0 = zmax + z_lift
-
-    # Pixel size (mm)
     pixel_width  = (x_range[-1] - x_range[0]) / (res_x - 1) if res_x > 1 else (xmax - xmin)
     pixel_height = (y_range[-1] - y_range[0]) / (res_y - 1) if res_y > 1 else (ymax - ymin)
+    px_area = pixel_height * pixel_width
+    # centros de píxel
+    XX, YY = np.meshgrid(x_range, y_range, indexing="xy")
+    XX = XX + (0.5 * pixel_width  if res_x > 1 else 0.0)
+    YY = YY + (0.5 * pixel_height if res_y > 1 else 0.0)
+    ZZ     = np.full_like(XX, z0)
+    ZZ_end = np.full_like(XX, zmin)
 
-    # Build center-of-pixel grid (meshgrid is (rows, cols) = (y, x))
-    xx, yy = np.meshgrid(x_range, y_range, indexing="xy")
-    xx = xx + 0.5 * (pixel_width  if res_x > 1 else 0.0)
-    yy = yy + 0.5 * (pixel_height if res_y > 1 else 0.0)
-    zz = np.full_like(xx, z0)
-    zz_end = np.full_like(xx, zmin)
-    # Starts (N,3) and directions (N,3). Orthographic rays go straight down -Z.
-    starts = np.column_stack((xx.ravel(), yy.ravel(), zz.ravel())).astype(np.float64)
+    starts = np.column_stack((XX.ravel(), YY.ravel(), ZZ.ravel())).astype(np.float64)
     dirs   = np.tile(np.array([0.0, 0.0, -1.0], dtype=np.float64), (starts.shape[0], 1))
-    ends   = np.column_stack((xx.ravel(), yy.ravel(), zz_end.ravel())).astype(np.float64)
-    # Batch ray cast. Depending on PyVista version:
-    # multi_ray_trace returns (points, ray_ids, cell_ids) OR (points, ray_ids)
-    out = mesh.multi_ray_trace(starts, dirs, first_point=True)
+    ends   = np.column_stack((XX.ravel(), YY.ravel(), ZZ_end.ravel())).astype(np.float64)
 
+    out = mesh.multi_ray_trace(starts, dirs, first_point=True)
     if len(out) == 3:
         points, ray_ids, cell_ids = out
     else:
         points, ray_ids = out
-        cell_ids = None  # not all versions return this
+        cell_ids = None
 
-    # Convert to numpy arrays
-    points  = np.asarray(points)
+    points  = np.asarray(points, dtype=np.float64)
     ray_ids = np.asarray(ray_ids, dtype=np.int32)
     if cell_ids is not None:
         cell_ids = np.asarray(cell_ids, dtype=np.int32)
 
-    # Filter valid hits (PyVista only returns hits; missing rays are not present)
-    # If you need a dense image, you can reconstruct via ray_ids.
-    hit_points = points
-    properties = {
+    #t = np.einsum("ij,ij->i", points - starts[ray_ids], dirs[ray_ids])
+    #mask = (t >= 0.0)
+
+    # 2) back-face culling simple para rayos en -Z: n_z > 0
+    # if cell_ids is not None:
+    #     try:
+    #         nz = mesh.face_normals[cell_ids, 2]
+    #         mask &= (nz > 0.0)
+    #     except Exception:
+    #         pass
+    #
+    hit_points = points#[mask]
+    # ray_ids    = ray_ids[mask]
+    # cell_ids   = cell_ids[mask] if cell_ids is not None else None
+
+    # === Face normals per-hit (vectorized) ===
+    if cell_ids is None:
+        raise RuntimeError("cell_ids is None; need cell_ids to map hits -> face normals.")
+    n = mesh.cell_normals[cell_ids]  # (N,3)
+    n = n / np.linalg.norm(n, axis=1, keepdims=True)
+
+    ray_dir = dirs[0]
+    # cos(theta) between face normal and ray direction
+    cos_th = -n @ ray_dir
+    # (N,)
+    # Safety mask (should already be <0 from culling)
+    #mask = cos_th < 1e-9
+    #n = n[mask]
+    #cos_th = -cos_th[mask]
+    #hit_points = hit_points[mask]
+
+    return {
         "x_range": x_range,
         "y_range": y_range,
         "z_start": z0,
@@ -107,12 +124,12 @@ def compute_ray_tracing_fast(mesh: pv.PolyData, res_x: int, res_y: int, margin: 
         "cell_ids": cell_ids,
         "res_x": res_x,
         "res_y": res_y,
-        "ray_starts": starts,      # optional (can be large; keep only if you need it)
-        "ray_dirs": dirs,          # "
-        "ray_ends": ends
+        "ray_starts": starts,
+        "ray_dirs": dirs,
+        "ray_ends": ends,
+        "cos_th": cos_th,
+        "cell_normal": n
     }
-    return properties
-
 
 if __name__ == '__main__':
     pass
