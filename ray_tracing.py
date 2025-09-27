@@ -105,7 +105,7 @@ def compute_ray_tracing_fast(mesh: pv.PolyData, res_x: int, res_y: int):
 
     ray_dir = dirs[0]
     # cos(theta) between face normal and ray direction
-    cos_th = -n @ ray_dir
+    cos_th = n @ ray_dir
     # (N,)
     # Safety mask (should already be <0 from culling)
     #mask = cos_th < 1e-9
@@ -132,4 +132,15 @@ def compute_ray_tracing_fast(mesh: pv.PolyData, res_x: int, res_y: int):
     }
 
 if __name__ == '__main__':
-    pass
+    import pyvista as pv
+    from monitor import show_ray_tracing_fast
+    model = "models/Aqua+(B).stl"
+    
+    mesh = pv.read(model)
+    mesh = mesh.triangulate().clean()
+    mesh.rotate_x(10, inplace=True)
+    mesh.rotate_y(25, inplace=True)
+    
+    res = compute_ray_tracing_fast(mesh, 30, 30)
+    show_ray_tracing_fast(mesh, res, save_3d=False, show_mesh=True)
+

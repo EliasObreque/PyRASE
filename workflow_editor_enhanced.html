@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Geology Workflow Editor — left‑click select, wheel zoom</title>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;height:100vh;overflow:hidden;color:#f0f6fc}
+    .workflow-container{display:flex;height:100vh}
+    .sidebar{width:300px;background:linear-gradient(180deg,#161b22 0%,#0d1117 100%);border-right:1px solid #30363d;padding:20px;overflow-y:auto}
+    .sidebar h3{font-size:13px;margin:14px 0 10px;letter-spacing:.8px;text-transform:uppercase;color:#f0f6fc}
+    .node-item{background:linear-gradient(135deg,#21262d,#30363d);border:1px solid #30363d;border-radius:8px;padding:14px;margin-bottom:8px;cursor:pointer;user-select:none}
+    .node-title{font-weight:600;font-size:13px}
+    .node-description{color:#8b949e;font-size:11px}
+
+    .canvas{position:relative;flex:1;overflow:hidden;background:radial-gradient(circle at 25% 25%, rgba(56,139,253,.05) 0%, transparent 50%),radial-gradient(circle at 75% 75%, rgba(124,58,237,.05) 0%, transparent 50%),#0d1117}
+    .canvas-inner{position:relative;width:100%;height:100%;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg, rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(rgba(56,139,253,.1) 1px,transparent 1px),linear-gradient(90deg, rgba(56,139,253,.1) 1px,transparent 1px),linear-gradient(rgba(56,139,253,.2) 2px,transparent 2px),linear-gradient(90deg, rgba(56,139,253,.2) 2px,transparent 2px);background-size:20px 20px,20px 20px,100px 100px,100px 100px,500px 500px,500px 500px;transform-origin:0 0}
+    .reference-frame{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:900px;height:650px;border:2px dashed rgba(56,139,253,.35);border-radius:8px;pointer-events:none}
+
+    .zoom-indicator,.coordinate-display{position:absolute;background:rgba(33,38,45,.95);border:1px solid #30363d;border-radius:8px;backdrop-filter:blur(10px)}
+    .zoom-indicator{top:20px;left:20px;padding:10px 14px;font-weight:600}
+    .coordinate-display{bottom:60px;left:20px;padding:8px 12px;color:#8b949e;font:11px 'Consolas','Monaco',monospace}
+    .controls{position:absolute;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px}
+    .control-btn{width:44px;height:44px;background:rgba(33,38,45,.95);border:1px solid #30363d;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:bold}
+
+    .workflow-node{position:absolute;min-width:220px;min-height:110px;background:linear-gradient(135deg,#21262d,#30363d);border:1px solid #30363d;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.3);user-select:none;cursor:grab;resize:both;overflow:auto;z-index:10}
+    .workflow-node.selected{outline:2px solid #388bfd}
+    .workflow-node.dragging{cursor:grabbing}
+    .node-header{background:linear-gradient(90deg,#388bfd,#7c3aed);color:#fff;padding:10px 12px;border-radius:12px 12px 0 0;display:flex;align-items:center;justify-content:space-between}
+    .node-body{padding:12px}
+    .node-ports{display:flex;justify-content:space-between;gap:8px;margin-top:8px}
+    .port{width:16px;height:16px;border-radius:50%;border:2px solid;cursor:crosshair}
+    .port.input{background:#238636;border-color:#238636}
+    .port.output{background:#da3633;border-color:#da3633}
+    .resize-grip{position:absolute;right:2px;bottom:2px;width:12px;height:12px;border:1px solid #6b7280;border-radius:2px;background:rgba(255,255,255,.15);cursor:nwse-resize}
+
+    /* SVG under nodes, still clickable on empty areas */
+    .link-layer{position:absolute;left:0;top:0;width:100%;height:100%;z-index:5;pointer-events:auto}
+    .link-path{fill:none;stroke:#388bfd;stroke-width:3;filter:drop-shadow(0 0 6px rgba(56,139,253,.4));pointer-events:stroke}
+    .link-path.selected{stroke:#ffd166}
+  </style>
+</head>
+<body>
+<div class="workflow-container">
+  <div class="sidebar">
+    <div class="node-category">
+      <h3>📥 Input</h3>
+      <div class="node-item" data-type="file-reader"><div class="node-title">📄 File Reader</div><div class="node-description">Read CSV/Parquet/GeoTIFF</div></div>
+      <div class="node-item" data-type="project-reader"><div class="node-title">🗂️ Project Reader</div><div class="node-description">Open geology/mining project</div></div>
+    </div>
+    <div class="node-category">
+      <h3>🧩 Modules</h3>
+      <div class="node-item" data-type="filters"><div class="node-title">🧹 Filters</div><div class="node-description">Clean and subset data</div></div>
+      <div class="node-item" data-type="feature-extraction"><div class="node-title">🧷 Feature Extraction</div><div class="node-description">Derive descriptors</div></div>
+      <div class="node-item" data-type="synthetic-variables"><div class="node-title">🧪 Synthetic Variables</div><div class="node-description">Compute engineered vars</div></div>
+      <div class="node-item" data-type="clustering"><div class="node-title">🧭 Clustering</div><div class="node-description">Spatial or grade clusters</div></div>
+      <div class="node-item" data-type="variogram"><div class="node-title">📈 Variogram</div><div class="node-description">Model spatial continuity</div></div>
+      <div class="node-item" data-type="estimation"><div class="node-title">🎯 Estimation</div><div class="node-description">OK/Kriging or IDW</div></div>
+      <div class="node-item" data-type="drillhole-optimization"><div class="node-title">🛠️ Drill Hole Optimization</div><div class="node-description">Suggest drilling plan</div></div>
+    </div>
+    <div class="node-category">
+      <h3>📊 Visualization</h3>
+      <div class="node-item" data-type="3d-view"><div class="node-title">🧊 3D View</div><div class="node-description">Render geology in 3D</div></div>
+      <div class="node-item" data-type="eda"><div class="node-title">📊 EDA</div><div class="node-description">Exploratory data analysis</div></div>
+    </div>
+    <div class="node-category">
+      <h3>📤 Output</h3>
+      <div class="node-item" data-type="create-pdf"><div class="node-title">📄 Create PDF</div><div class="node-description">Build report</div></div>
+      <div class="node-item" data-type="send-email"><div class="node-title">✉️ Send Email</div><div class="node-description">Email results</div></div>
+      <div class="node-item" data-type="slack-report"><div class="node-title">💬 Slack Report</div><div class="node-description">Post summary to Slack</div></div>
+    </div>
+  </div>
+  <div class="canvas">
+    <svg class="link-layer" id="link-layer"></svg>
+    <div class="canvas-inner" id="canvas">
+      <div class="reference-frame"></div>
+    </div>
+    <div class="zoom-indicator" id="zoom-display">Zoom: 100%</div>
+    <div class="coordinate-display" id="coord-display">Mouse: (0,0)
+Pan: (0,0)</div>
+    <div class="controls">
+      <div class="control-btn" onclick="zoomIn()">+</div>
+      <div class="control-btn" onclick="zoomOut()">−</div>
+      <div class="control-btn" onclick="resetZoom()">⌂</div>
+      <div class="control-btn" onclick="arrangeNodes()">⚡</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---------- State ----------
+  let nodes=[]; let connections=[]; let nodeCounter=0;
+  let selectedNode=null; let selectedConn=null;
+  let dragOffset={x:0,y:0}; let isDragging=false; let zoomLevel=1; let panOffset={x:0,y:0}; let isPanning=false;
+  let connecting=null;
+
+  // Bridge
+  let pyBridge=null;
+  if(typeof qt!=='undefined' && qt.webChannelTransport){ new QWebChannel(qt.webChannelTransport, ch=>{ pyBridge=ch.objects.pyBridge; init(); }); }
+  else { pyBridge={ save_workflow:d=>console.log('save',d), execute_node:(id,d)=>{}, open_config_dialog:(id,t)=>alert(`Config ${t}`) }; init(); }
+
+  function canvasEl(){ return document.getElementById('canvas'); }
+  function canvasRect(){ return canvasEl().getBoundingClientRect(); }
+  function toWorld(cx,cy){ const r=canvasRect(); return { x:(cx-r.left - panOffset.x)/zoomLevel, y:(cy-r.top - panOffset.y)/zoomLevel }; }
+
+  function init(){
+    bindSidebarDoubleClick(); bindCanvas(); bindDeletionHotkey(); updateZoomDisplay(); setTimeout(()=>example(),300);
+  }
+
+  // Double‑click sidebar to add
+  function bindSidebarDoubleClick(){
+    document.querySelectorAll('.node-item').forEach(item=>{
+      item.addEventListener('dblclick', e=>{ e.preventDefault(); e.stopPropagation(); createNodeInView(item.getAttribute('data-type')); });
+    });
+  }
+
+  // Delete selected node or link
+  function bindDeletionHotkey(){
+    document.addEventListener('keydown', e=>{
+      if(e.key==='Delete' || e.key==='Backspace'){
+        if(selectedNode){ const id=selectedNode; clearSelection(); removeNode(id); e.preventDefault(); return; }
+        if(selectedConn){ const id=selectedConn; clearSelection(); removeConnection(id); e.preventDefault(); return; }
+      }
+    });
+  }
+
+  function clearSelection(){
+    if(selectedNode){ const el=document.querySelector(`.workflow-node[data-id='${selectedNode}']`); if(el) el.classList.remove('selected'); selectedNode=null; }
+    if(selectedConn){ const p=document.getElementById(selectedConn); if(p) p.classList.remove('selected'); selectedConn=null; }
+  }
+
+  // Canvas pan/zoom and empty click to clear
+  let startPan={x:0,y:0};
+  function bindCanvas(){
+    const c=canvasEl(); c.style.cursor='grab';
+    c.addEventListener('click', e=>{ if(e.target===c || e.target.classList.contains('reference-frame')) clearSelection(); });
+    c.addEventListener('mousemove', e=>{ if(!isPanning){ const w=toWorld(e.clientX,e.clientY); setCoord(Math.round(w.x),Math.round(w.y)); }});
+    c.addEventListener('mousedown', e=>{
+      if(e.target===c || e.target.classList.contains('reference-frame')){ isPanning=true; startPan={x:e.clientX-panOffset.x,y:e.clientY-panOffset.y}; c.style.cursor='grabbing'; e.preventDefault(); }
+    });
+    document.addEventListener('mousemove', e=>{ if(isPanning){ panOffset.x=e.clientX-startPan.x; panOffset.y=e.clientY-startPan.y; applyTransform(); redrawLinks(); }});
+    document.addEventListener('mouseup', ()=>{ if(isPanning){ isPanning=false; c.style.cursor='grab'; }});
+    c.addEventListener('wheel', e=>{
+      e.preventDefault(); const r=canvasRect(); const mx=e.clientX-r.left, my=e.clientY-r.top; const nf=e.deltaY>0?0.9:1.1; const nz=Math.max(.2,Math.min(5,zoomLevel*nf));
+      if(nz!==zoomLevel){ panOffset.x=mx-(mx-panOffset.x)*(nz/zoomLevel); panOffset.y=my-(my-panOffset.y)*(nz/zoomLevel); zoomLevel=nz; applyTransform(); updateZoomDisplay(); redrawLinks(); }
+    });
+  }
+  function applyTransform(){ canvasEl().style.transform=`translate(${panOffset.x}px,${panOffset.y}px) scale(${zoomLevel})`; }
+  function updateZoomDisplay(){ document.getElementById('zoom-display').textContent=`Zoom: ${Math.round(zoomLevel*100)}%`; }
+  function setCoord(x,y){ document.getElementById('coord-display').innerHTML=`Mouse: (${x}, ${y})<br>Pan: (${Math.round(panOffset.x)}, ${Math.round(panOffset.y)})`; }
+
+  // Nodes
+  function getNodeConfig(type){
+    const cfg={
+      'file-reader':{title:'📄 File Reader',config:{file_path:''},inputs:['path'],outputs:['table']},
+      'project-reader':{title:'🗂️ Project Reader',config:{project_file:''},inputs:['trigger'],outputs:['project']},
+
+      'filters':{title:'🧹 Filters',config:{rules:[]},inputs:['table'],outputs:['table']},
+      'feature-extraction':{title:'🧷 Feature Extraction',config:{methods:['stats']},inputs:['table'],outputs:['features']},
+      'synthetic-variables':{title:'🧪 Synthetic Variables',config:{expressions:[]},inputs:['table'],outputs:['table']},
+      'clustering':{title:'🧭 Clustering',config:{algo:'kmeans',k:3},inputs:['features'],outputs:['labels']},
+      'variogram':{title:'📈 Variogram',config:{model:'spherical'},inputs:['coordinates','values'],outputs:['variogram-model']},
+      'estimation':{title:'🎯 Estimation',config:{method:'OK'},inputs:['variogram-model','samples'],outputs:['block-model']},
+      'drillhole-optimization':{title:'🛠️ Drill Hole Optimization',config:{targets:[]},inputs:['block-model'],outputs:['drill-plan']},
+
+      '3d-view':{title:'🧊 3D View',config:{},inputs:['block-model'],outputs:['viewed']},
+      'eda':{title:'📊 EDA',config:{},inputs:['table'],outputs:['eda-report']},
+
+      'create-pdf':{title:'📄 Create PDF',config:{filename:'report.pdf'},inputs:['eda-report','block-model'],outputs:['pdf']},
+      'send-email':{title:'✉️ Send Email',config:{to:'',subject:'Geology Report'},inputs:['pdf'],outputs:['sent']},
+      'slack-report':{title:'💬 Slack Report',config:{channel:'#mining'},inputs:['eda-report'],outputs:['posted']}
+    };
+    return cfg[type] || {title:type,config:{},inputs:['in'],outputs:['out']};
+  }
+
+  function createNodeInView(type){
+    const id=`node_${++nodeCounter}`; const r=canvasRect();
+    const cx=(r.width/2 - panOffset.x)/zoomLevel; const cy=(r.height/2 - panOffset.y)/zoomLevel;
+    const x=cx+(Math.random()-.5)*100, y=cy+(Math.random()-.5)*100; const conf=getNodeConfig(type);
+    const node={id,type,x,y,w:280,h:160,config:conf.config,inputs:conf.inputs,outputs:conf.outputs};
+    nodes.push(node); renderNode(node); saveWorkflow(); return node;
+  }
+
+  function renderNode(node){
+    const el=document.createElement('div'); el.className='workflow-node'; el.style.left=node.x+'px'; el.style.top=node.y+'px'; el.style.width=(node.w||280)+'px'; el.style.height=(node.h||160)+'px'; el.dataset.id=node.id;
+    const conf=getNodeConfig(node.type);
+    el.innerHTML=`<div class=\"node-header\"><span>${conf.title}</span><button class=\"delete-btn\" title=\"Delete\">×</button></div>
+      <div class=\"node-body\">
+        <div class=\"node-type\">Type: ${node.type}</div>
+        <div class=\"node-ports\">
+          <div class=\"inputs\">${conf.inputs.map(i=>`<div class='port input' data-port='${i}' data-node='${node.id}' title='Input: ${i}'></div>`).join('')}</div>
+          <div class=\"outputs\">${conf.outputs.map(o=>`<div class='port output' data-port='${o}' data-node='${node.id}' title='Output: ${o}'></div>`).join('')}</div>
+        </div>
+      </div>
+      <div class=\"resize-grip\"></div>`;
+
+    // left-click selects
+    el.addEventListener('click', e=>{ if(isDragging) return; selectNode(node.id); e.stopPropagation(); });
+
+    // drag start (ignore ports/buttons/grip)
+    el.addEventListener('mousedown', e=>{ if(e.target.closest('.port')||e.target.closest('.delete-btn')||e.target.closest('.resize-grip')) return; startDrag(e); });
+
+    // config dialog on double click
+    el.addEventListener('dblclick', e=>{ if(e.target.closest('.delete-btn')) return; const n=findNode(el.dataset.id); if(pyBridge?.open_config_dialog){ pyBridge.open_config_dialog(n.id,n.type); } else { alert(`Config ${n.type}`); } });
+
+    // delete button
+    el.querySelector('.delete-btn').addEventListener('click', ()=>{ removeNode(node.id); });
+
+    // ports
+    el.querySelectorAll('.port').forEach(p=> p.addEventListener('click', onPortClick));
+
+    // custom resize grip
+    const grip = el.querySelector('.resize-grip');
+    grip.addEventListener('mousedown', e=> startResize(e, el, node));
+
+    canvasEl().appendChild(el); redrawLinks();
+  }
+
+  function selectNode(id){ clearSelection(); selectedNode=id; const el=document.querySelector(`.workflow-node[data-id='${id}']`); if(el) el.classList.add('selected'); }
+  function findNode(id){ return nodes.find(n=>n.id===id); }
+
+  function startDrag(e){
+    const el=e.currentTarget; const id=el.dataset.id; const n=findNode(id); if(!n) return; isDragging=true; el.classList.add('dragging');
+    const s=toWorld(e.clientX,e.clientY); dragOffset.x=s.x-n.x; dragOffset.y=s.y-n.y;
+    function mm(ev){ if(!isDragging) return; const w=toWorld(ev.clientX,ev.clientY); const r=canvasRect(); const worldW=r.width/zoomLevel, worldH=r.height/zoomLevel; const nw=(el.offsetWidth||n.w)/zoomLevel, nh=(el.offsetHeight||n.h)/zoomLevel;
+      let nx = w.x - dragOffset.x; let ny = w.y - dragOffset.y; nx=Math.max(0,Math.min(nx,worldW-nw)); ny=Math.max(0,Math.min(ny,worldH-nh)); n.x=nx; n.y=ny; el.style.left=nx+'px'; el.style.top=ny+'px'; redrawLinks(); }
+    function mu(){ if(!isDragging) return; isDragging=false; el.classList.remove('dragging'); document.removeEventListener('mousemove',mm); document.removeEventListener('mouseup',mu); saveWorkflow(); }
+    document.addEventListener('mousemove',mm); document.addEventListener('mouseup',mu);
+    e.preventDefault(); e.stopPropagation();
+  }
+
+  // Resize with zoom awareness
+  function startResize(e, el, n){
+    e.preventDefault(); e.stopPropagation();
+    const startX=e.clientX, startY=e.clientY; const iw = el.offsetWidth, ih = el.offsetHeight;
+    function mm(ev){ const dw=(ev.clientX-startX)/zoomLevel; const dh=(ev.clientY-startY)/zoomLevel; const w=Math.max(200, iw+dw); const h=Math.max(110, ih+dh); el.style.width=w+'px'; el.style.height=h+'px'; n.w=w; n.h=h; redrawLinks(); }
+    function mu(){ document.removeEventListener('mousemove',mm); document.removeEventListener('mouseup',mu); saveWorkflow(); }
+    document.addEventListener('mousemove',mm); document.addEventListener('mouseup',mu);
+  }
+
+  // Connections using SVG under nodes; paths clickable
+  function onPortClick(e){ e.stopPropagation(); const port=e.currentTarget; const nodeId=port.dataset.node; const portName=port.dataset.port; const isOutput=port.classList.contains('output');
+    if(!connecting){ connecting={nodeId,port:portName,isOutput,el:port}; port.style.boxShadow='0 0 20px #ffd700'; }
+    else {
+      if(connecting.nodeId!==nodeId && connecting.isOutput!==isOutput){
+        const id=`conn_${connections.length}`;
+        connections.push({ id, from: connecting.isOutput?{nodeId:connecting.nodeId,port:connecting.port}:{nodeId,port:portName}, to: connecting.isOutput?{nodeId,port:portName}:{nodeId:connecting.nodeId,port:connecting.port} });
+        saveWorkflow();
+      }
+      connecting.el.style.boxShadow=''; connecting=null; redrawLinks();
+    }
+  }
+
+  function portCenterScreen(nodeId, portName, isOutput){
+    const sel = `.workflow-node[data-id="${nodeId}"] .port.${isOutput?'output':'input'}[data-port="${portName}"]`;
+    const el=document.querySelector(sel); if(!el) return null; const pr=el.getBoundingClientRect(); return { x: pr.left + pr.width/2, y: pr.top + pr.height/2 };
+  }
+
+  function screenToSvg(x,y){ const svg=document.getElementById('link-layer'); const pt=svg.createSVGPoint(); pt.x=x; pt.y=y; const res=pt.matrixTransform(svg.getScreenCTM().inverse()); return {x:res.x,y:res.y}; }
+
+  function redrawLinks(){
+    const svg=document.getElementById('link-layer'); svg.innerHTML='';
+    connections.forEach(c=>{
+      const a=portCenterScreen(c.from.nodeId,c.from.port,true); const b=portCenterScreen(c.to.nodeId,c.to.port,false); if(!a||!b) return;
+      const A=screenToSvg(a.x,a.y), B=screenToSvg(b.x,b.y);
+      const dx=Math.max(60, Math.abs(B.x-A.x)*0.5); const d=`M ${A.x} ${A.y} C ${A.x+dx} ${A.y}, ${B.x-dx} ${B.y}, ${B.x} ${B.y}`;
+      const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('class','link-path'); path.setAttribute('id', c.id); path.setAttribute('d',d);
+      path.addEventListener('mousedown', evt=>{ evt.stopPropagation(); });
+      path.addEventListener('click', evt=>{ evt.stopPropagation(); selectConnection(c.id); });
+      svg.appendChild(path);
+    });
+  }
+
+  function selectConnection(id){ clearSelection(); selectedConn=id; const p=document.getElementById(id); if(p){ p.classList.add('selected'); } }
+  function removeConnection(id){ connections = connections.filter(x=>x.id!==id); redrawLinks(); saveWorkflow(); }
+  function removeNode(id){ nodes = nodes.filter(n=>n.id!==id); connections = connections.filter(c=> c.from.nodeId!==id && c.to.nodeId!==id ); const el=document.querySelector(`.workflow-node[data-id='${id}']`); if(el) el.remove(); saveWorkflow(); redrawLinks(); }
+
+  // Persistence
+  function saveWorkflow(){ const wf={nodes,connections}; pyBridge?.save_workflow?.(JSON.stringify(wf)); }
+
+  // Utilities
+  function zoomIn(){ zoomLevel=Math.min(3, zoomLevel*1.2); applyTransform(); updateZoomDisplay(); redrawLinks(); }
+  function zoomOut(){ zoomLevel=Math.max(.1, zoomLevel/1.2); applyTransform(); updateZoomDisplay(); redrawLinks(); }
+  function resetZoom(){ zoomLevel=1; panOffset={x:0,y:0}; applyTransform(); updateZoomDisplay(); redrawLinks(); }
+  function arrangeNodes(){ nodes.forEach((n,i)=>{ n.x=100+(i%3)*320; n.y=100+Math.floor(i/3)*240; const el=document.querySelector(`.workflow-node[data-id='${n.id}']`); if(el){ el.style.left=n.x+'px'; el.style.top=n.y+'px'; } }); saveWorkflow(); redrawLinks(); }
+
+  function example(){ nodes=[]; connections=[]; canvasEl().querySelectorAll('.workflow-node').forEach(n=>n.remove()); clearSelection(); saveWorkflow();
+    const a=createNodeInView('file-reader'); const b=createNodeInView('filters'); const c=createNodeInView('feature-extraction'); const d=createNodeInView('clustering');
+    setTimeout(()=>{ connections.push({id:`conn_${connections.length}`, from:{nodeId:a.id,port:'table'}, to:{nodeId:b.id,port:'table'}});
+                   connections.push({id:`conn_${connections.length}`, from:{nodeId:b.id,port:'table'}, to:{nodeId:c.id,port:'table'}});
+                   connections.push({id:`conn_${connections.length}`, from:{nodeId:c.id,port:'features'}, to:{nodeId:d.id,port:'features'}}); saveWorkflow(); redrawLinks(); }, 250);
+  }
+
+  // Expose for toolbar
+  window.createExample = example; window.clearWorkflow = ()=>{ nodes=[]; connections=[]; canvasEl().querySelectorAll('.workflow-node').forEach(n=>n.remove()); redrawLinks(); saveWorkflow(); };
+  window.createNode = function(type,x,y){ const n=createNodeInView(type); if(typeof x==='number'&&typeof y==='number'){ n.x=x; n.y=y; const el=document.querySelector(`.workflow-node[data-id='${n.id}']`); if(el){ el.style.left=x+'px'; el.style.top=y+'px'; } saveWorkflow(); redrawLinks(); } return n; }
+  window.createConnection = function(from,to){ const c={ id:`conn_${connections.length}`, from:{nodeId:from.nodeId, port:from.portName}, to:{nodeId:to.nodeId, port:to.portName} }; connections.push(c); saveWorkflow(); redrawLinks(); }
+</script>
+</body>
+</html>
