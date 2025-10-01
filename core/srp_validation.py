@@ -3,11 +3,11 @@ Created by Elias Obreque
 Date: 30/09/2025
 email: els.obrq@gmail.com
 """
+import time
 import numpy as np
 import pyvista as pv
-from src.monitor import show_ray_tracing_fast, plot_normals_with_glyph
-from src.ray_tracing import compute_ray_tracing_fast
-import time
+from core.optimal_ray_tracing import compute_ray_tracing_fast_optimized
+from rich import print
 
 
 true_values = [np.array([-2.783188, 0, 0]) * 1e-5,
@@ -30,16 +30,18 @@ mesh = pv.Cube(x_length=2, y_length=2, z_length=2)
 mesh = mesh.triangulate().clean()
 mesh = mesh.subdivide(2, subfilter='linear').clean()
 mesh = mesh.compute_normals(cell_normals=True, point_normals=False, inplace=False)
+# warm code
+res_prop = compute_ray_tracing_fast_optimized(mesh, input_vector[0], 10, 10)
 
 for i in range(3):
     r_inout = input_vector[i]
     r_inout = r_inout / np.linalg.norm(r_inout)
     t0 = time.time()
-    res_prop = compute_ray_tracing_fast(mesh, r_inout, res_x, res_y)
-    print("time ms:", (time.time() - t0) * 1000)
+    res_prop = compute_ray_tracing_fast_optimized(mesh, r_inout, res_x, res_y)
+    print(f"[yellow]Time ms:  {(time.time() - t0) * 1000}[/yellow]")
 
-    plot_normals_with_glyph(mesh, res_prop, arrow_scale=0.01)
-    show_ray_tracing_fast(mesh, res_prop, filename="", show_mesh=True, save_3d=False)
+    #plot_normals_with_glyph(mesh, res_prop, arrow_scale=0.01)
+    #show_ray_tracing_fast(mesh, res_prop, filename="", show_mesh=True, save_3d=False)
 
     # === Ray-tracing outputs (already filtered) ===
     hits     = res_prop['hit_points']           # (N,3), mm
@@ -99,6 +101,5 @@ for i in range(3):
     print(f"  Ray-traced:  {F_srp_total}")
     print(f"  Cannonball model (CR={Cr}):  {F_srp_cb}")
     print(f"  Ray-traced Torque:  {T_srp_total}")
-
     print(f"  FEM - Error: {rel_err_srp_fem:.3f}%")
     print(f"  CB - Error: {rel_err_srp_cb:.3f}%")

@@ -1,3 +1,5 @@
+scikit-learn
+matplotlib
 pyvista
 vtk
 numpy
@@ -8,3 +10,4 @@ scipy
 tqdm
 torch
 pandas
+rich

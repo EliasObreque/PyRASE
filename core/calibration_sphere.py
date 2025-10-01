@@ -10,9 +10,10 @@ import pyvista as pv
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from src.monitor import show_ray_tracing_fast
-from src.ray_tracing import compute_ray_tracing_fast
+from core.monitor import show_ray_tracing_fast
+from core.optimal_ray_tracing import compute_ray_tracing_fast_optimized
 import matplotlib as mpl
+from rich import print
 
 mpl.rcParams.update({
     "font.family": "serif",                     # generic family
@@ -40,28 +41,25 @@ A_proj_2d_sphere = np.pi * R_m**2
 A_3d_surf_total = 4 * np.pi * (R_m) ** 2
 A_half_surf = A_3d_surf_total * 0.5
 
-test_res = False
+test_res = True
 if test_res:
     mesh_res = [30, 50, 100, 125, 150, 175, 200]
     resolutions_px = [10, 30, 50, 100, 150, 200, 250, 275, 290, 300, 310, 350, 400, 500, 750, 1000]
-    
-    
-    # to remove artifacts on the initialization
+
+    ray_direction = np.array([0, 0, -1])
+    ray_direction = ray_direction / np.linalg.norm(ray_direction)  # normalise
+
+    # Warm the code to remove artifacts on the initialization
     mesh = pv.Sphere(radius=R_m, theta_resolution=10, phi_resolution=10, end_theta=360)
-    compute_ray_tracing_fast(mesh, 50, 50)
+    compute_ray_tracing_fast_optimized(mesh, ray_direction, 50, 50, 50)
     # ====================
-    
-    
+
     def get_performance_mesh(res_mesh_, show_mesh=False, save_3d=True):
         mesh = pv.Sphere(radius=R_m, theta_resolution=res_mesh_, phi_resolution=res_mesh_, end_theta=360)
         mesh = mesh.triangulate().clean()
         mesh.rotate_x(-45, inplace=True)
         mesh = mesh.compute_normals(cell_normals=True, point_normals=False, inplace=False)
         # mesh.plot(show_edges=True)
-    
-        ray_direction = np.array([0, 0, -1])
-        ray_direction = ray_direction / np.linalg.norm(ray_direction)  # normalise
-    
 
         area_errors = []
         time_calculation = []
@@ -71,9 +69,9 @@ if test_res:
             res_x = res
             res_y = res
             t0 = time.time()
-            res_prop = compute_ray_tracing_fast(mesh, res_x, res_y)
+            res_prop = compute_ray_tracing_fast_optimized(mesh, ray_direction, res_x, res_y)
             time_calculation.append(time.time() - t0)
-            print("time 2:", time.time() - t0)
+            print(f"[yellow]Time ms:  {(time.time() - t0) * 1000}[/yellow]")
             if show_mesh or save_3d:
                 filename = f"./results/mesh_res_{res_mesh_}_and_px_res_{res}.png"
                 show_ray_tracing_fast(mesh, res_prop, filename=filename, show_mesh=show_mesh, save_3d=save_3d)
@@ -96,7 +94,7 @@ if test_res:
     res_resolution_area = []
     res_time_calculation = []
     for res_i in mesh_res:
-        area_errors_i, time_calculation_i = get_performance_mesh(res_i, show_mesh=False, save_3d=True)
+        area_errors_i, time_calculation_i = get_performance_mesh(res_i, show_mesh=False, save_3d=False)
         res_resolution_area.append(area_errors_i)
         res_time_calculation.append(time_calculation_i)
     

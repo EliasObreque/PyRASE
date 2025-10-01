@@ -5,8 +5,6 @@ email: els.obrq@gmail.com
 """
 import numpy as np
 import pyvista as pv
-from numba import jit, prange, cuda
-import numba as nb
 from scipy.ndimage import label, binary_dilation, generate_binary_structure
 
 
@@ -365,7 +363,6 @@ def correct_edge_normals_minimal(hits, cell_normals, mesh):
     """
     Correct ONLY true edge/corner hits
     """
-
     needs_correction = detect_true_edges_only(hits, mesh)
 
     if needs_correction.sum() == 0:
@@ -375,15 +372,12 @@ def correct_edge_normals_minimal(hits, cell_normals, mesh):
     mesh_extent = np.max(mesh.bounds) - np.min(mesh.bounds)
     edge_tol = mesh_extent * 0.005
     bounds = np.array(mesh.bounds).reshape(3, 2)
-
-    # Para cada edge hit, construir normal ideal geométricamente
     edge_indices = np.where(needs_correction)[0]
 
     for idx in edge_indices:
         point = hits[idx]
         ideal_normal = np.zeros(3)
 
-        # Para cada eje, si está en boundary, contribuye a la normal
         for axis in range(3):
             at_min = np.abs(point[axis] - bounds[axis, 0]) < edge_tol
             at_max = np.abs(point[axis] - bounds[axis, 1]) < edge_tol
@@ -393,7 +387,6 @@ def correct_edge_normals_minimal(hits, cell_normals, mesh):
             elif at_min:
                 ideal_normal[axis] = -1.0
 
-        # Normalizar
         norm = np.linalg.norm(ideal_normal)
         if norm > 0:
             corrected[idx] = ideal_normal / norm
@@ -410,10 +403,7 @@ def detect_true_edges_only(hits, mesh):
 
     mesh_extent = np.max(mesh.bounds) - np.min(mesh.bounds)
     edge_tol = mesh_extent * 0.005  # Más estricto: 0.5%
-
     bounds = np.array(mesh.bounds).reshape(3, 2)
-
-    # Para cada hit, contar cuántas coordenadas están EXACTAMENTE en boundary
     on_boundary_count = np.zeros(len(hits), dtype=int)
 
     for axis in range(3):
@@ -423,9 +413,6 @@ def detect_true_edges_only(hits, mesh):
         on_this_boundary = at_min | at_max
 
         on_boundary_count += on_this_boundary.astype(int)
-
-    # TRUE edges: exactamente en 2 boundaries (arista)
-    # TRUE corners: exactamente en 3 boundaries (vértice)
     is_edge = on_boundary_count == 2
     is_corner = on_boundary_count == 3
 

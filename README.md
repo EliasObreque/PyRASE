@@ -1,22 +1,235 @@
-# ML-base model for drag and SRP
+# ML-Based Model for Drag and SRP
+
+A machine learning-based model for computing atmospheric drag and Solar Radiation Pressure (SRP) on satellites using advanced ray tracing techniques.
+
+## 🚀 Features
+
+- **Ray Tracing Engine**: High-performance ray tracing for satellite geometry analysis
+- **SRP Validation**: Tools for validating Solar Radiation Pressure models
+- **Sphere Calibration**: Calibration utilities for spherical satellite models
+- **Optimal Ray Tracing**: Optimized algorithms for efficient computation
+- **Drag Validation**: Atmospheric drag model validation tools
+
+## 📋 Prerequisites
+
+- Python 3.8 or higher
+- pip package manager
+- (Optional) CUDA-capable GPU for accelerated computations
+
+## 🔧 Installation
+
+### 1. Clone the repository
+
+```bash
+git clone https://gitlab.com/align-nu/ml-base-model-for-drag-and-srp.git
+cd ml-base-model-for-drag-and-srp
+```
+
+### 2. Create a virtual environment
+
+**On Windows:**
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+**On macOS/Linux:**
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+## 📦 Project Structure
+
+```
+ml-base-model-for-drag-and-srp/
+├── core/
+│   ├── monitor.py              # Visualization and monitoring tools
+│   ├── optimal_ray_tracing.py  # Optimized ray tracing algorithms
+│   ├── ray_tracing.py          # Core ray tracing implementation
+│   ├── calibration_sphere.py   # Sphere calibration utilities
+│   ├── drag_validation.py      # Drag model validation
+│   ├── srp_validation.py       # SRP model validation
+│   └── optimal_ann.py          # Artificial Neural Network optimization
+├── models/                     # 3D models directory
+├── results/                    # Output results directory
+├── requirements.txt            # Python dependencies
+└── README.md                   # This file
+```
+
+## 🎯 Usage
+
+### Running SRP Validation
+
+```bash
+python ./core/srp_validation.py
+```
+
+This script validates the Solar Radiation Pressure model using ray tracing on satellite geometry.
+
+### Running Sphere Calibration
+
+```bash
+python ./core/calibration_sphere.py
+```
+
+Calibrates the model using a spherical reference geometry for accuracy verification.
+
+### Running Drag Validation
+
+```bash
+python ./core/drag_validation.py
+```
+
+Validates atmospheric drag computations against known models.
+
+### Custom Ray Tracing
+
+```python
+import pyvista as pv
+import numpy as np
+from core.optimal_ray_tracing import compute_ray_tracing_fast_optimized
+
+# Load your satellite mesh
+mesh = pv.read("models/Aqua+(B).stl")
+mesh = mesh.triangulate().clean()
+
+# Define incident direction (e.g., sun direction)
+r_source = np.array([-1, 0, 0])  # X-axis direction
+r_source = r_source / np.linalg.norm(r_source)
+
+# Perform ray tracing
+results = compute_ray_tracing_fast_optimized(mesh, r_source, res_x=500, res_y=500)
+
+print(f"Hit points: {len(results['hit_points'])}")
+print(f"Pixel area: {results['pixel_area']}")
+```
+
+## 🔬 Example Workflow
+
+1. **Load satellite geometry**
+2. **Define solar/velocity vector**
+3. **Perform ray tracing**
+4. **Compute force/torque coefficients**
+5. **Validate against reference models**
+
+## 🛠️ Development
+
+### Running Tests
+
+```bash
+# Install test dependencies
+pip install pytest pytest-cov
+
+# Run tests
+pytest tests/
+```
+
+### Code Style
+
+This project follows PEP 8 guidelines. Format code using:
+
+```bash
+pip install black
+black src/
+```
+
+## 📊 Dependencies
+
+Key dependencies include:
+
+- `numpy` - Numerical computations
+- `pyvista` - 3D visualization and ray tracing
+- `scipy` - Scientific computing utilities
+- `matplotlib` - Plotting and visualization
+- `rich` - Terminal output formatting
+
+See `requirements.txt` for the complete list.
+
+## 📝 License
+
+This project is licensed under the MIT License - see below for details:
+
+```
+MIT License
+
+Copyright (c) 2025 Elias Obreque
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## 👥 Authors
+
+**Elias Obreque**  
+📧 els.obrq@gmail.com
+
+**Alice Hudson**  
+📧 alicehudson09@gmail.com
 
 
+## 🙏 Acknowledgments
 
-## Getting started
+- PyVista team for the excellent 3D visualization library
+- Contributors to the scientific Python ecosystem
 
+## 📞 Contact & Support
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+For questions, issues, or contributions:
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+- 📧 Email: els.obrq@gmail.com
+- 🐛 Issues: [GitHub Issues](https://github.com/yourusername/ml-base-model-for-drag-and-srp/issues)
+- 💡 Feature Requests: Open an issue with the `enhancement` label
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+## 🚧 Project Status
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+**Active Development** - This project is actively maintained and welcomes contributions.
 
-## License
-For open source projects, say how it is licensed.
+### Roadmap
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+- [ ] GPU acceleration support
+- [ ] Additional satellite geometry examples
+- [ ] Web-based visualization interface
+- [ ] Docker containerization
+- [ ] Comprehensive test coverage
+
+## 🤝 Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+Please ensure your code:
+- Follows PEP 8 style guidelines
+- Includes appropriate documentation
+- Passes all existing tests
+- Adds tests for new functionality
+
+---
+
+⭐ If you find this project useful, please consider giving it a star!

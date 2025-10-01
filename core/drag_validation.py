@@ -3,12 +3,13 @@ Created by Elias Obreque
 Date: 01/10/2025
 email: els.obrq@gmail.com
 """
+import time
 import numpy as np
 from scipy.special import erf
 import pyvista as pv
-from src.monitor import show_ray_tracing_fast
-from src.ray_tracing import compute_ray_tracing_fast
-import time
+
+from core.monitor import show_ray_tracing_fast
+from core.ray_tracing import compute_ray_tracing_fast
 
 res_ = 50
 res_x = res_y = 100
