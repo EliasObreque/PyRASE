@@ -15,8 +15,8 @@ import vtk
 from tqdm import tqdm
 from scipy.special import erf
 import matplotlib.pyplot as plt
-from monitor import show_ray_tracing, show_ray_tracing_fast
-from ray_tracing import compute_ray_tracing, compute_ray_tracing_fast
+from src.monitor import show_ray_tracing_fast
+from src.ray_tracing import compute_ray_tracing_fast
 # a spherical model of ray tracing to validate that our model and force calculations are accurate
 
 mesh = pv.Sphere(radius = 100, theta_resolution=10, phi_resolution=10, end_theta=300)

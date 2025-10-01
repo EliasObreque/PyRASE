@@ -17,6 +17,7 @@ import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 import matplotlib.pyplot as plt
 import time
+from scipy.stats import linregress
 
 v_mag = 7800
 den = 5e-13
@@ -26,8 +27,8 @@ ta = time.time()
 
 # sorting the data
 
-df_original = pd.read_csv('data_1751144053.6894915.csv')
-df = pd.read_csv('data_1751144053.6894915.csv')
+df_original = pd.read_csv('./ray_tracing_simulation_data.csv')
+df = pd.read_csv('./ray_tracing_simulation_data.csv')
 df['f_x_d'] = df['f_x_d'].multiply(2* 1/den * 1/(v_mag**2)) # factoring out 0.5*den*v^2 as we dont want these parameters in the neural network
 df['f_y_d'] = df['f_y_d'].multiply(2* 1/den * 1/(v_mag**2))
 df['f_z_d'] = df['f_z_d'].multiply(2* 1/den * 1/(v_mag**2))
@@ -201,10 +202,6 @@ pred_f_z_s = pred_outputs[:,8]
 pred_t_x_s = pred_outputs[:,9]
 pred_t_y_s = pred_outputs[:,10]
 pred_t_z_s = pred_outputs[:,11]
-#%%
-
-import matplotlib.pyplot as plt
-from scipy.stats import linregress
 
 # test data plotted with nn estimates with r^2 annotation
 def scatter_with_r2(
@@ -295,9 +292,8 @@ scatter_with_r2(
     axs[3,2], real_t_z_s, pred_t_z_s, "Real t_z_s", "Pred t_z_s", color='purple'
 )
 
-
 plt.tight_layout()
-plt.show()
+
 
 #%%
 # why do we z normalise? lets look at the data for F_d
@@ -307,7 +303,6 @@ plt.hist(raw_force, bins=50, color='blue', edgecolor='black')
 plt.xlabel('Unnormalized force (f_x_d)')
 plt.ylabel('Frequency')
 plt.grid(True)
-plt.show()
 
 #%%
 plt.figure(figsize=(8,4))
@@ -315,7 +310,6 @@ plt.hist(raw_torque, bins=50, color='blue', edgecolor='black')
 plt.xlabel('Unnormalized torque (t_x_d)')
 plt.ylabel('Frequency')
 plt.grid(True)
-plt.show()
 
 #%%
 
@@ -324,7 +318,6 @@ plt.hist(df['f_x_d'].values, bins=50, color='blue', edgecolor='black')
 plt.xlabel('Normalized f_x_d')
 plt.ylabel('Frequency')
 plt.grid(True)
-plt.show()
 
 #%%
 normalised_torque = df['t_x_d'].values
