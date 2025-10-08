@@ -7,6 +7,7 @@ import time
 import numpy as np
 import pyvista as pv
 from core.optimal_ray_tracing import compute_ray_tracing_fast_optimized
+from core.srp_models import compute_srp_lambert_model, compute_spherical_srp_model
 from rich import print
 
 
@@ -43,40 +44,15 @@ for i in range(3):
     #plot_normals_with_glyph(mesh, res_prop, arrow_scale=0.01)
     #show_ray_tracing_fast(mesh, res_prop, filename="", show_mesh=True, save_3d=False)
 
-    # === Ray-tracing outputs (already filtered) ===
-    hits     = res_prop['hit_points']           # (N,3), mm
-    ray_ids  = res_prop['ray_ids']              # (N,)
-    cell_ids = res_prop['cell_ids']             # (N,) or None
-    px_w     = res_prop['pixel_width']          # mm
-    px_h     = res_prop['pixel_height']         # mm
-    ray_dir  = r_inout         #
-    cos_th   = res_prop['cos_th']
-    normal_cell = res_prop['cell_normal']
-
-    px_area = (px_w * px_h)
-    # Lever arm for torque (about mesh center)
-    com_m = np.asarray(mesh.center)
-    r_m   = hits - com_m                      # (N,3)
-
-    # Projected area assignment per-hit.
-    A_proj = px_area                            # (scalar)
-
     # === Physical parameters (SI) ===
     # Cr     = 1.12
     diffuse = diffuse_list[i]
-    spec    = specular_list[i]
+    spec = specular_list[i]
     absor = 1 - diffuse - spec
     Cr = 1 + spec + 2*diffuse/3
+    com_m = mesh.center
 
-    # === SRP (Lambert + specular ideal simplified) ===
-    # Using projected area to the beam (constant per hit in this setup): A_proj = px_area
-    # Force per hit: F_s = P_srp * A_proj * [ diffuse * d + 2(spec*cos + (diffuse/3)) * n ]
-    F_s = P_srp * A_proj * ((1 - spec) * ray_dir + (2.0*(spec*cos_th - diffuse/3.0))[:,None] * normal_cell)
-    T_s = np.cross(r_m, F_s)
-
-    # === Sums ===
-    F_srp_total  = F_s.sum(axis=0)
-    T_srp_total  = T_s.sum(axis=0)
+    F_srp_total, T_srp_total, F_s, T_s = compute_srp_lambert_model(res_prop, r_inout, com_m, diffuse, spec)
 
     # plot_force_torque_heatmaps(res_prop, r_m, "Position", f"results/position_case_{i + 1}.png")
     #
@@ -87,7 +63,7 @@ for i in range(3):
     #plot_torque_heatmaps(res_prop, T_s,
     #                     filename=f"torque_case_{i + 1}.png")
 
-    F_srp_cb = P_srp * A_proj_2d_sphere *ray_dir * Cr
+    F_srp_cb = compute_spherical_srp_model(r_inout, Cr, A_proj_2d_sphere)
     F_srp_ref = true_values[i]
 
     rel_err_srp_fem = np.linalg.norm(F_srp_total - F_srp_ref)/np.linalg.norm(F_srp_ref) * 100

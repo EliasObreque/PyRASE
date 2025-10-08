@@ -1,3 +1,5 @@
+pyatmos
+nrlmsise00
 scikit-learn
 matplotlib
 pyvista

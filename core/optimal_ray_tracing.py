@@ -111,6 +111,16 @@ def compute_ray_tracing_fast_optimized(mesh: pv.PolyData, r_source: np.ndarray,
     # Vectorized dot product (MUCH faster than loop)
     cos_th = np.einsum('ij,j->i', n, r_source)
 
+    # area projected
+    n_proj = mesh.cell_normals
+    # Vectorized normalization
+    norms = np.linalg.norm(n_proj, axis=1, keepdims=True)
+    n_proj = n_proj / norms
+    a_fem = mesh.compute_cell_sizes(length=False, area=True, volume=False)['Area']
+    a_fem = np.asarray(a_fem, dtype=np.float64)
+    cos_th_proj = np.einsum('ij,j->i', n_proj, r_source)
+    proj_ids = cos_th_proj <= 0
+    area_proj_mesh = np.sum(a_fem[proj_ids] * np.abs(cos_th_proj[proj_ids]))
     # === 8. Filter back-facing triangles (OPTIMIZED - vectorized) ===
     mask = cos_th < -1e-9
 
@@ -133,6 +143,7 @@ def compute_ray_tracing_fast_optimized(mesh: pv.PolyData, r_source: np.ndarray,
         "hit_points": hit_points,
         "ray_ids": ray_ids_filtered,
         "cell_ids": cell_ids_filtered,
+        'A_fem_proj': area_proj_mesh,
         "res_x": res_x,
         "res_y": res_y,
         "ray_starts": starts,
@@ -146,21 +157,26 @@ def compute_ray_tracing_fast_optimized(mesh: pv.PolyData, r_source: np.ndarray,
     if fill_gaps:
         res_prop = fill_gaps_by_spatial_interpolation_optimized(res_prop, max_gap_size=10)
 
-    filtered = filter_edge_artifacts_optimized(
-        res_prop['hit_points'],
-        res_prop['cell_normal'],
-        res_prop['cos_th'],
-        res_prop['cell_ids'],
-        res_prop['ray_ids'],
-        mesh
-    )
+    # filtered = filter_edge_artifacts_optimized(
+    #     res_prop['hit_points'],
+    #     res_prop['cell_normal'],
+    #     res_prop['cos_th'],
+    #     res_prop['cell_ids'],
+    #     res_prop['ray_ids'],
+    #     mesh
+    # )
 
-    res_prop['hit_points'] = filtered['hits']
-    res_prop['cell_normal'] = filtered['normals']
-    res_prop['cos_th'] = filtered['cos_th']
-    res_prop['cell_ids'] = filtered['cell_ids']
-    res_prop['ray_ids'] = filtered['ray_ids']
+    # res_prop['hit_points'] = filtered['hits']
+    # res_prop['cell_normal'] = filtered['normals']
+    # res_prop['cos_th'] = filtered['cos_th']
+    # res_prop['cell_ids'] = filtered['cell_ids']
+    # res_prop['ray_ids'] = filtered['ray_ids']
 
+    Area_r = np.abs(px_area / res_prop['cos_th'])
+    area_aux = max(px_area / np.cos(89 * np.pi / 180), 2 * px_area)
+    print(area_aux, 5 * px_area)
+    Area_r[Area_r > area_aux] = area_aux
+    res_prop['area_proj'] = Area_r
     return res_prop
 
 

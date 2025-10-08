@@ -7,6 +7,21 @@ import pyvista as pv
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
+import matplotlib as mpl
+mpl.rcParams.update({
+    "font.family": "serif",                     # generic family
+    "font.serif": ["Times New Roman", "Times"], # try exact TNR first
+    "font.size": 18,                            # default text size
+    "axes.titlesize": 18,                       # axes title
+    "axes.labelsize": 18,                       # x/y labels
+    "xtick.labelsize": 18,                      # tick labels
+    "ytick.labelsize": 18,
+    "legend.fontsize": 16,
+    "figure.titlesize": 18,
+    # Math text configured to look like Times
+    "mathtext.fontset": "stix",                 # STIX resembles Times
+    "mathtext.rm": "Times New Roman",
+})
 
 
 def show_ray_tracing(mesh, prop: dict):
@@ -45,6 +60,7 @@ def show_ray_tracing(mesh, prop: dict):
     # plotter.add_mesh(centers, color="red", point_size=3)
     plotter.show_grid()
     plotter.show()
+
 
 
 def show_ray_tracing_fast(mesh, prop: dict, filename="3d_view.png", show_miss_rays=False,
@@ -428,6 +444,106 @@ def plot_torque_heatmaps(res_prop, T_s, filename="torque_distribution.png"):
             print(f"  Negative contributions: {negative:+.3e} N·m")
             print(f"  Net (should be ~0):     {net:+.3e} N·m")
             print(f"  Balance metric:         {balance:.4f}% (closer to 0% is better)")
+
+
+def show_local_coefficient_per_angle(aoa_list, aoa_array,
+                                     c_a_sigma_analytic, c_s_sigma_analytic, c_n_sigma_analytic,
+                                     c_a_list, c_s_list, c_n_list, sigma_list,
+                                     file_name
+                                     ):
+    colors = {
+        0.0: '#6B8CD4',  # Blue
+        0.25: '#7CAC9D',  # Teal
+        0.5: '#A4B86E',  # Yellow-green
+        0.75: '#D8944D',  # Orange
+        1.0: '#D87F7F'  # Pink/Red
+    }
+
+    # Create figure with WHITE background
+    fig, ax = plt.subplots(figsize=(10, 6), facecolor='white')
+    ax.set_facecolor('white')
+
+    # Set text colors for white background
+    text_color = 'black'
+    ax.tick_params(colors=text_color, which='both')
+    ax.spines['bottom'].set_color('gray')
+    ax.spines['top'].set_color('gray')
+    ax.spines['left'].set_color('gray')
+    ax.spines['right'].set_color('gray')
+
+    # Grid
+    ax.grid(True, color='gray', alpha=0.5, linewidth=0.5)
+
+    # Labels
+    ax.set_xlabel(r"Angle of attack $\alpha$ [deg]", color=text_color)
+    ax.set_ylabel(r"$C_{A,S,N}$ [-]", color=text_color)
+
+    # Plot data - GROUP BY SIGMA VALUE
+    legend_handles = []
+    legend_labels = []
+
+    for i, sigma in enumerate(sigma_list):
+        color = colors.get(sigma, f'C{i}')  # Use predefined colors or default
+
+        # ANALYTICAL (solid lines) - all three coefficients with same color
+        line_CA, = ax.plot(aoa_array, c_a_sigma_analytic[i], '-',
+                           color=color, linewidth=1., alpha=0.95)
+        ax.plot(aoa_array, c_s_sigma_analytic[i], '-',
+                color=color, linewidth=1., alpha=0.95)
+        ax.plot(aoa_array, c_n_sigma_analytic[i], '-',
+                color=color, linewidth=1., alpha=0.95)
+
+        # NUMERICAL/DSMC (dots) - all three coefficients with same color
+        ax.plot(aoa_list, c_a_list[i], 'o',
+                color=color, markersize=7, markeredgewidth=0.5,
+                markeredgecolor='white', alpha=0.8)
+        ax.plot(aoa_list, c_s_list[i], 'x',
+                color=color, markersize=14, markeredgewidth=0.5,
+                markeredgecolor='white', alpha=0.8)
+        ax.plot(aoa_list, c_n_list[i], '*',
+                color=color, markersize=14, markeredgewidth=0.5,
+                markeredgecolor='white', alpha=0.8)
+
+        # Add to legend (only once per sigma)
+        legend_handles.append(line_CA)
+        legend_labels.append(f'{sigma}')
+
+    # Legend (top right, clean style)
+    legend = ax.legend(legend_handles, legend_labels,
+                       title=r'$\sigma_{N,T}$',
+                       loc='upper right',
+                       framealpha=0.95,
+                       facecolor='white',
+                       edgecolor='gray',
+                       shadow=False)
+    legend.get_title().set_color(text_color)
+    legend.get_title().set_weight('bold')
+    for text in legend.get_texts():
+        text.set_color(text_color)
+
+    # Add method indicator at bottom center
+    ax.text(0.5, -0.22, r'$\circ$ $C_A$,      $\times$ $C_S$,      $\bigstar$ $C_N$,      $-$ Analytic',
+        transform=ax.transAxes,
+        ha='center', color=text_color,
+        style='normal')
+
+    # Title (optional)
+    ax.set_title('Rarefied Aerodynamics of a Panel\n' +
+                 r'$T_\infty$= 973 K, $V_\infty$= 7500 m/s, $T_W$= 300 K',
+                 color=text_color, pad=15)
+
+    # Set axis limits
+    ax.set_xlim(0, 90)
+    ax.set_ylim(0, 4.5)
+
+    # Make sure x-axis shows key angles
+    ax.set_xticks([0, 15, 30, 45, 60, 75, 90])
+
+    plt.subplots_adjust(bottom=0.3)
+    plt.tight_layout()
+    plt.savefig(file_name, dpi=300, bbox_inches='tight',
+                facecolor='white')
+    plt.show()
 
 if __name__ == '__main__':
     pass
