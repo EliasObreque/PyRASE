@@ -5,8 +5,6 @@ email: els.obrq@gmail.com
 """
 import numpy as np
 import pyvista as pv
-from numba import jit, prange, cuda
-import numba as nb
 from scipy.ndimage import label, binary_dilation, generate_binary_structure
 
 

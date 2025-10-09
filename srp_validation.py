@@ -38,8 +38,8 @@ for i in range(3):
     res_prop = compute_ray_tracing_fast(mesh, r_inout, res_x, res_y)
     print("time ms:", (time.time() - t0) * 1000)
 
-    plot_normals_with_glyph(mesh, res_prop, arrow_scale=0.01)
-    show_ray_tracing_fast(mesh, res_prop, filename="", show_mesh=True, save_3d=False)
+    #plot_normals_with_glyph(mesh, res_prop, arrow_scale=0.01)
+    #show_ray_tracing_fast(mesh, res_prop, filename="", show_mesh=True, save_3d=False)
 
     # === Ray-tracing outputs (already filtered) ===
     hits     = res_prop['hit_points']           # (N,3), mm
