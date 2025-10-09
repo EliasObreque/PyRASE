@@ -26,8 +26,14 @@ sigma_list = [0, 0.25, 0.5, 0.75, 1.0]
 aoa_list = [0, 15, 30, 45, 60, 75, 77.5, 80, 82.5, 85, 87.5, 88, 88.5, 89, 89.5, 90]
 #0, 15, 30, 45, 60, 75, 77.5,
 res_ = 50
-res_x = res_y = 500
-A_ref = 4
+res_x = res_y = 100
+
+r_c = 10
+angle_c = 36 * np.deg2rad(1.0)
+length_cone = r_c / np.tan(angle_c)
+
+
+A_ref = np.pi * r_c **2
 C_A_list = []
 C_N_list = []
 C_S_list = []
@@ -51,9 +57,9 @@ for sigma in sigma_list:
     sigma_N, sigma_T = sigma, sigma
     Area_list = []
     for aoa in aoa_list:
-        mesh = pv.Cube(x_length=0.0001, y_length=2, z_length=2)
+        mesh = pv.Cone(direction=(-1, 0, 0), radius=r_c, height=length_cone, resolution=100)
         mesh = mesh.triangulate().clean()
-        mesh = mesh.subdivide(1, subfilter='linear').clean()
+        mesh = mesh.subdivide(3, subfilter='linear').clean()
         mesh.rotate_y(aoa, inplace=True)
         mesh = mesh.compute_normals(cell_normals=True, point_normals=False, inplace=False)
         com_m = mesh.center
@@ -170,8 +176,8 @@ for sigma in sigma_list:
 # plt.show()
 show_local_coefficient_per_angle(aoa_list, aoa_array,
                                  C_N_sigma_analytic, C_S_sigma_analytic, C_T_sigma_analytic,
-                                 C_A_list, C_S_list, C_N_list, sigma_list, f'results/panel_aerodynamics_{res_x}.png')
+                                 C_A_list, C_S_list, C_N_list, sigma_list, f'results/cone_aerodynamics_{res_x}.png')
 
 
 show_error_local_coefficient_per_angle(aoa_list, error_C_A_list, error_C_S_list, error_C_N_list, sigma_list,
-                                           f'results/error_panel_aerodynamics_res_{res_x}.png')
+                                           f'results/error_cone_aerodynamics_res_{res_x}.png')

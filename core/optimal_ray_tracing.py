@@ -122,7 +122,7 @@ def compute_ray_tracing_fast_optimized(mesh: pv.PolyData, r_source: np.ndarray,
     proj_ids = cos_th_proj <= 0
     area_proj_mesh = np.sum(a_fem[proj_ids] * np.abs(cos_th_proj[proj_ids]))
     # === 8. Filter back-facing triangles (OPTIMIZED - vectorized) ===
-    mask = cos_th < -1e-9
+    mask = cos_th < -1e-12
 
     hit_points = points[mask]
     ray_ids_filtered = ray_ids[mask]
@@ -165,7 +165,7 @@ def compute_ray_tracing_fast_optimized(mesh: pv.PolyData, r_source: np.ndarray,
     #     res_prop['ray_ids'],
     #     mesh
     # )
-
+    #
     # res_prop['hit_points'] = filtered['hits']
     # res_prop['cell_normal'] = filtered['normals']
     # res_prop['cos_th'] = filtered['cos_th']
@@ -173,7 +173,7 @@ def compute_ray_tracing_fast_optimized(mesh: pv.PolyData, r_source: np.ndarray,
     # res_prop['ray_ids'] = filtered['ray_ids']
 
     Area_r = np.abs(px_area / res_prop['cos_th'])
-    area_aux = max(px_area / np.cos(89 * np.pi / 180), 2 * px_area)
+    area_aux = px_area / np.cos(89 * np.pi / 180)
     print(area_aux, 5 * px_area)
     Area_r[Area_r > area_aux] = area_aux
     res_prop['area_proj'] = Area_r
