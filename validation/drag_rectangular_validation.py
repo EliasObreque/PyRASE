@@ -10,7 +10,7 @@ import pyvista as pv
 from matplotlib import pyplot as plt
 from scipy.spatial.transform.rotation import Rotation
 from core.monitor import (show_ray_tracing_fast, show_local_coefficient_per_angle,
-                          show_error_local_coefficient_per_angle)
+                          show_error_local_coefficient_per_angle, show_torque_drag_per_angle, show_force_drag_per_angle)
 from core.optimal_ray_tracing import compute_ray_tracing_fast_optimized
 from core.drag_models import (compute_fmf_drag_model, compute_analytical_prism_coefficients,
                               compute_coefficients_schaaf, get_atmospheric_condition, get_tangential_vector)
@@ -43,6 +43,9 @@ error_C_A_list = []
 error_C_N_list = []
 error_C_S_list = []
 
+Torque_list = []
+Force_list = []
+
 Area_list = []
 
 for sigma in sigma_list:
@@ -53,6 +56,9 @@ for sigma in sigma_list:
     error_C_N_sigma = []
     error_C_S_sigma = []
     sigma_N, sigma_T = sigma, sigma
+    torque_sigma= []
+    force_sigma = []
+
     Area_list = []
     for beta_ang in beta_list:
         mesh = pv.Cube(x_length=3, y_length=1, z_length=2)
@@ -97,7 +103,8 @@ for sigma in sigma_list:
         F_drag_total, T_drag_total, F_d, T_d = compute_fmf_drag_model(q_inf, ray_dir, normal_cell,
                                                                       hits, Area_r, cn, ct,
                                                                       com_m=com_m)
-
+        torque_sigma.append(T_drag_total)
+        force_sigma.append(F_drag_total)
         # Drag coefficient from ray tracing
         Cd_raytraced = np.linalg.norm(F_drag_total) / (q_inf * A_ref)
 
@@ -148,6 +155,8 @@ for sigma in sigma_list:
     error_C_N_list.append(error_C_N_sigma)
     error_C_S_list.append(error_C_S_sigma)
 
+    Torque_list.append(torque_sigma)
+    Force_list.append(force_sigma)
 
 # Analytical calculation
 C_A_sigma_analytic = []
@@ -188,6 +197,14 @@ for sigma in sigma_list:
 # plt.show()
 
 
+
+show_torque_drag_per_angle(beta_list, sigma_list, Torque_list, f'results/torque_rect_aerodynamics_res_{res_x}.png',
+                               title_name="Torque on rectangular prism",
+                               x_ticks=[0, 15, 30, 45, 60, 75, 90])
+
+show_force_drag_per_angle(beta_list, sigma_list, Force_list, f'results/force_rect_aerodynamics_res_{res_x}.png',
+                               title_name="Force on rectangular prism",
+                               x_ticks=[0, 15, 30, 45, 60, 75, 90])
 
 show_local_coefficient_per_angle(beta_list, beta_array,
                                  C_A_sigma_analytic, C_S_sigma_analytic, C_N_sigma_analytic,

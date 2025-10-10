@@ -138,11 +138,8 @@ rel_err_F = np.linalg.norm(F_drag_total - F_drag_sentman) / np.linalg.norm(F_dra
 # Expected Cd range for validation (from literature)
 # At s~10-12, alpha=1.0, typical Cd ≈ 2.05-2.22
 Cd_expected_range = (2.05, 2.22)
-C_p, C_tau = compute_sentman_coefficients(cos_theta=np.abs(cos_th), s=s, alpha_E=1, T_w=T_wall, T_inf=T_inf)
 
-F_drag_total_sent, _, F_d_, _ = compute_fmf_drag_model(q_inf, ray_dir, normal_cell, hits, Area_r, C_p, C_tau)
-Cd_raytraced_sent = np.linalg.norm(F_drag_total_sent) / (q_inf * A_ref)
-rel_err_F_sent = np.linalg.norm(F_drag_total_sent - F_drag_sentman) / np.linalg.norm(F_drag_sentman) * 100
+
 # ============================================================================
 # RESULTS OUTPUT
 # ============================================================================
@@ -163,7 +160,6 @@ print(f"  Dynamic pressure:   {q_inf:.4e} Pa")
 print("\n" + "-" * 70)
 print("DRAG COEFFICIENT (Cd):")
 print(f"  Ray-traced (FEM):      {Cd_raytraced:.6f}")
-print(f"  Ray-traced Sentman (FEM):      {Cd_raytraced:.6f}")
 print(f"  Sentman analytical:    {Cd_sentman:.6f}")
 print(f"  Expected range:        {Cd_expected_range[0]:.2f} - {Cd_expected_range[1]:.2f}")
 print(f"  → Error:               {rel_err_Cd:.3f}%")
@@ -171,11 +167,8 @@ print(f"  → Error:               {rel_err_Cd:.3f}%")
 print("\n" + "-" * 70)
 print("DRAG FORCE [N]:")
 print(f"  Ray-traced:   {F_drag_total}")
-print(f"  Ray-traced - Sentman:   {F_drag_total_sent}")
 print(f"  Analytical:   {F_drag_sentman}")
 print(f"  → Error:      {rel_err_F:.3f}%")
-print(f"  → Error:      {rel_err_F_sent:.3f}%")
-
 
 print("\n" + "-" * 70)
 print("DRAG TORQUE [N·m]:")

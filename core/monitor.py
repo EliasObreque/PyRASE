@@ -658,6 +658,176 @@ def show_error_local_coefficient_per_angle(aoa_list, error_c_a_list, error_c_s_l
     plt.show()
 
 
+def show_torque_drag_per_angle(aoa_list, sigma_list, torque_list,
+                               file_name, title_name="Torque on Panel",
+                               x_ticks=[0, 15, 30, 45, 60, 75, 90]):
+    colors = {
+        0.0: '#6B8CD4',  # Blue
+        0.25: '#7CAC9D',  # Teal
+        0.5: '#A4B86E',  # Yellow-green
+        0.75: '#D8944D',  # Orange
+        1.0: '#D87F7F'  # Pink/Red
+    }
+
+    # Create figure with WHITE background
+    fig, ax = plt.subplots(3, 1, figsize=(10, 6), sharex=True, facecolor='white')
+
+    # Configure each subplot
+    text_color = 'black'
+    component_labels = ['x', 'y', 'z']
+
+    legend_handles = []
+    legend_labels = []
+
+    for i in range(3):
+        ax[i].set_facecolor('white')
+        ax[i].grid(True, color='gray', alpha=0.5, linewidth=0.5)
+        ax[i].set_ylabel(f"$\\tau_{{{component_labels[i]}}}$ [mN·m]", color=text_color)
+        ax[i].tick_params(colors=text_color, which='both')
+
+        # Set spines color
+        for spine in ax[i].spines.values():
+            spine.set_color('gray')
+
+        # Scientific notation on y-axis
+        ax[i].ticklabel_format(style='sci', axis='y', scilimits=(-3, 3))
+        ax[i].yaxis.get_offset_text().set_color(text_color)
+
+    # Plot data
+    for i, sigma in enumerate(sigma_list):
+        color = colors.get(sigma, f'C{i}')
+
+        for j in range(3):
+            line, = ax[j].plot(aoa_list, np.array(torque_list[i])[:, j] * 1000,
+                               '-o', color=color, linewidth=1.5, alpha=0.95,
+                               markersize=5, markeredgewidth=0.5)
+
+        # Add to legend only once
+        if i == 0:
+            legend_handles.append(line)
+            legend_labels.append(f'{sigma}')
+        else:
+            legend_handles.append(line)
+            legend_labels.append(f'{sigma}')
+
+    # X-axis label (only on bottom subplot)
+    ax[2].set_xlabel(r"Angle of attack $\alpha$ [deg]", color=text_color)
+    ax[2].set_xticks(x_ticks)
+
+    # Title
+    fig.suptitle(title_name, color=text_color, y=0.98)
+
+    # Single legend OUTSIDE the plot, right and centered
+    fig.legend(legend_handles, legend_labels,
+               title=r'$\sigma_{N,T}$',
+               loc='center right',
+               bbox_to_anchor=(1.001, 0.5),  # Right and centered vertically
+               framealpha=0.95,
+               facecolor='white',
+               edgecolor='gray',
+               shadow=False)
+
+    # Adjust layout to make room for legend
+    plt.tight_layout()  # Leave space on right for legend
+
+    plt.subplots_adjust(
+        left=0.13,  # Left margin
+        bottom=0.15,  # Bottom margin
+        right=0.85,  # Right margin (leave space for legend: 0.85-0.88)
+        top=0.90,  # Top margin (leave space for title)
+        wspace=0.1,  # Width space between subplots (not needed for single column)
+        hspace=0.25  # Height space between subplots (IMPORTANT for 3 rows)
+    )
+
+    plt.savefig(file_name, dpi=300, bbox_inches='tight',
+                facecolor='white')
+    return fig, ax
+
+
+def show_force_drag_per_angle(aoa_list, sigma_list, torque_list,
+                               file_name, title_name="Torque on Panel",
+                               x_ticks=[0, 15, 30, 45, 60, 75, 90]):
+    colors = {
+        0.0: '#6B8CD4',  # Blue
+        0.25: '#7CAC9D',  # Teal
+        0.5: '#A4B86E',  # Yellow-green
+        0.75: '#D8944D',  # Orange
+        1.0: '#D87F7F'  # Pink/Red
+    }
+
+    # Create figure with WHITE background
+    fig, ax = plt.subplots(3, 1, figsize=(10, 6), sharex=True, facecolor='white')
+
+    # Configure each subplot
+    text_color = 'black'
+    component_labels = ['x', 'y', 'z']
+
+    legend_handles = []
+    legend_labels = []
+
+    for i in range(3):
+        ax[i].set_facecolor('white')
+        ax[i].grid(True, color='gray', alpha=0.5, linewidth=0.5)
+        ax[i].set_ylabel(f"$F_{{{component_labels[i]}}}$ [mN]", color=text_color)
+        ax[i].tick_params(colors=text_color, which='both')
+
+        # Set spines color
+        for spine in ax[i].spines.values():
+            spine.set_color('gray')
+
+        # Scientific notation on y-axis
+        ax[i].ticklabel_format(style='sci', axis='y', scilimits=(-3, 3))
+        ax[i].yaxis.get_offset_text().set_color(text_color)
+
+    # Plot data
+    for i, sigma in enumerate(sigma_list):
+        color = colors.get(sigma, f'C{i}')
+
+        for j in range(3):
+            line, = ax[j].plot(aoa_list, np.array(torque_list[i])[:, j] * 1000,
+                               '-o', color=color, linewidth=1.5, alpha=0.95,
+                               markersize=5, markeredgewidth=0.5)
+
+        # Add to legend only once
+        if i == 0:
+            legend_handles.append(line)
+            legend_labels.append(f'{sigma}')
+        else:
+            legend_handles.append(line)
+            legend_labels.append(f'{sigma}')
+
+    # X-axis label (only on bottom subplot)
+    ax[2].set_xlabel(r"Angle of attack $\alpha$ [deg]", color=text_color)
+    ax[2].set_xticks(x_ticks)
+
+    # Title
+    fig.suptitle(title_name, color=text_color, y=0.98)
+
+    # Single legend OUTSIDE the plot, right and centered
+    fig.legend(legend_handles, legend_labels,
+               title=r'$\sigma_{N,T}$',
+               loc='center right',
+               bbox_to_anchor=(1.001, 0.5),  # Right and centered vertically
+               framealpha=0.95,
+               facecolor='white',
+               edgecolor='gray',
+               shadow=False)
+
+    # Adjust layout to make room for legend
+    plt.tight_layout()  # Leave space on right for legend
+
+    plt.subplots_adjust(
+        left=0.13,  # Left margin
+        bottom=0.15,  # Bottom margin
+        right=0.85,  # Right margin (leave space for legend: 0.85-0.88)
+        top=0.90,  # Top margin (leave space for title)
+        wspace=0.1,  # Width space between subplots (not needed for single column)
+        hspace=0.25  # Height space between subplots (IMPORTANT for 3 rows)
+    )
+
+    plt.savefig(file_name, dpi=300, bbox_inches='tight',
+                facecolor='white')
+    return fig, ax
 
 if __name__ == '__main__':
     pass
