@@ -10,10 +10,10 @@ import pyvista as pv
 from matplotlib import pyplot as plt
 from scipy.spatial.transform.rotation import Rotation
 from core.monitor import (show_ray_tracing_fast, show_local_coefficient_per_angle,
-                          show_error_local_coefficient_per_angle, show_torque_drag_per_angle,
-                          plot_torque_heatmaps, show_force_drag_per_angle)
+                          show_error_local_coefficient_per_angle, show_torque_drag_per_angle, show_force_drag_per_angle)
 from core.optimal_ray_tracing import compute_ray_tracing_fast_optimized
-from core.drag_models import compute_fmf_drag_model, compute_coefficients_schaaf, get_atmospheric_condition, get_tangential_vector
+from core.drag_models import (compute_fmf_drag_model, compute_analytical_prism_coefficients,
+                              compute_coefficients_schaaf, get_atmospheric_condition, get_tangential_vector)
 
 v_inf = 7500
 T_wall = 300
@@ -25,17 +25,16 @@ _, rho, m_particle, r_specific = get_atmospheric_condition(t, 250)
 q_inf = 0.5 * rho * v_inf ** 2
 
 sigma_list = [0, 0.25, 0.5, 0.75, 1.0]
-aoa_list = [0, 15, 30, 45, 60, 75, 80, 85, 88, 89, 90]
+beta_list = np.arange(0, 195, 15)
+lx, ly, lz = 3, 1, 2
+aoa = 30
 #0, 15, 30, 45, 60, 75, 77.5,
 res_ = 50
 res_x = res_y = 500
-A_ref = 4
+A_ref = 2
 C_A_list = []
 C_N_list = []
 C_S_list = []
-
-Torque_list = []
-Force_list = []
 
 r_inout = np.array([1, 0, 0])
 r_inout = r_inout / np.linalg.norm(r_inout)
@@ -43,6 +42,9 @@ r_inout = r_inout / np.linalg.norm(r_inout)
 error_C_A_list = []
 error_C_N_list = []
 error_C_S_list = []
+
+Torque_list = []
+Force_list = []
 
 Area_list = []
 
@@ -54,19 +56,21 @@ for sigma in sigma_list:
     error_C_N_sigma = []
     error_C_S_sigma = []
     sigma_N, sigma_T = sigma, sigma
-
     torque_sigma= []
     force_sigma = []
+
     Area_list = []
-    for aoa in aoa_list:
-        mesh = pv.Cube(x_length=0.0001, y_length=2, z_length=2)
+    for beta_ang in beta_list:
+        mesh = pv.Cube(x_length=3, y_length=1, z_length=2)
         mesh = mesh.triangulate().clean()
         mesh = mesh.subdivide(1, subfilter='linear').clean()
-        mesh.rotate_y(aoa, inplace=True)
+        # ROTATION
+        mesh.rotate_y(-aoa, inplace=True)
+        mesh.rotate_z(beta_ang, inplace=True)
+
+
         mesh = mesh.compute_normals(cell_normals=True, point_normals=False, inplace=False)
-        rot_ = Rotation.from_euler('y', aoa, degrees=True)
-        com_m = np.array(mesh.center)
-        com_m = rot_.as_matrix() @ com_m
+        com_m = mesh.center
 
         t0 = time.time()
         res_prop = compute_ray_tracing_fast_optimized(mesh, r_inout, res_x, res_y)
@@ -90,7 +94,7 @@ for sigma in sigma_list:
         A_fem_proj = res_prop['A_fem_proj']
 
         Area_list.append(Area_r.sum())
-        print(f"Angle: {aoa}", Area_list[-1])
+        print(f"Angle: {beta_ang}", Area_list[-1])
         # area_ratio_correction = A_fem_proj / Area_r.sum()
         # Area_r *= area_ratio_correction
 
@@ -99,30 +103,33 @@ for sigma in sigma_list:
         F_drag_total, T_drag_total, F_d, T_d = compute_fmf_drag_model(q_inf, ray_dir, normal_cell,
                                                                       hits, Area_r, cn, ct,
                                                                       com_m=com_m)
-
-        # plot_torque_heatmaps(res_prop, T_d, f"results/torque_distribution_panel_{res_x}_{aoa}.png")
         torque_sigma.append(T_drag_total)
         force_sigma.append(F_drag_total)
         # Drag coefficient from ray tracing
         Cd_raytraced = np.linalg.norm(F_drag_total) / (q_inf * A_ref)
 
+        # projection
+        rot_a = Rotation.from_euler('y', -aoa, degrees=True)
+        rot_b = Rotation.from_euler('z', beta_ang, degrees=True)
+        rot_ = rot_b * rot_a
+
         F_drag_total_ans = rot_.as_matrix().T @ F_drag_total
 
         C_A = F_drag_total_ans[0] / (q_inf * A_ref)
-        C_N = F_drag_total_ans[2] / (q_inf * A_ref)
-        C_S = F_drag_total_ans[1] / (q_inf * A_ref)
+        C_N = -F_drag_total_ans[2] / (q_inf * A_ref)
+        C_S = -F_drag_total_ans[1] / (q_inf * A_ref)
 
         C_A_sigma.append(C_A)
         C_N_sigma.append(C_N)
         C_S_sigma.append(C_S)
-        #ERROR
-        cos_th_target = np.cos(aoa * np.pi / 180)
-        cn, ct = compute_coefficients_schaaf(cos_th_target, v_inf, sigma_N, sigma_T, T_inf, T_wall, m_particle)
-        cs = 0
-
-        c_t = cn + ct + cs
-        error_ca = np.abs(C_A - cn)/c_t *100
-        error_cn = np.abs(C_N - ct)/c_t *100
+        # ERROR
+        ca, cs, cn, _ = compute_analytical_prism_coefficients(
+            lx, ly, lz, aoa, -beta_ang, v_inf, sigma, sigma,
+            T_inf, T_wall, m_particle, A_ref
+        )
+        c_t = np.abs(cn) + np.abs(ca) + np.abs(cs)
+        error_ca = np.abs(C_A - ca)/c_t *100
+        error_cn = np.abs(C_N - cn)/c_t *100
         error_cs = np.abs(C_S - cs)/c_t *100
 
         error_C_A_sigma.append(error_ca)
@@ -152,20 +159,34 @@ for sigma in sigma_list:
     Force_list.append(force_sigma)
 
 # Analytical calculation
-C_N_sigma_analytic = []
-C_T_sigma_analytic = []
+C_A_sigma_analytic = []
 C_S_sigma_analytic = []
+C_N_sigma_analytic = []
 
-aoa_array = np.linspace(0, 90, 100)
+# Analytical computation
+print("\nComputing Analytical Solutions...")
+
+beta_array = np.linspace(np.min(beta_list), np.max(beta_list), 100)
 for sigma in sigma_list:
-    sigma_N, sigma_T = sigma, sigma
+    C_A_ana, C_S_ana, C_N_ana = [], [], []
+    print(f"\n  σ = {sigma:.1f}")
 
-    cos_th = np.cos(aoa_array * np.pi / 180)
-    cn, ct = compute_coefficients_schaaf(cos_th, v_inf, sigma_N, sigma_T, T_inf, T_wall, m_particle)
+    for beta_ang in beta_array:
+        C_A, C_S, C_N, _ = compute_analytical_prism_coefficients(
+            lx, ly, lz, aoa, -beta_ang, v_inf, sigma, sigma,
+            T_inf, T_wall, m_particle, A_ref
+        )
 
-    C_N_sigma_analytic.append(cn)
-    C_T_sigma_analytic.append(ct)
-    C_S_sigma_analytic.append(np.zeros_like(cn))
+        # Scale by q_inf to match ray tracing
+        C_A_ana.append(C_A)
+        C_S_ana.append(C_S)
+        C_N_ana.append(C_N)
+
+        print(f"    β={beta_ang:3.0f}°: C_A={C_A:7.4f}, C_S={C_S:7.4f}, C_N={C_N:7.4f}")
+
+    C_A_sigma_analytic.append(C_A_ana)
+    C_S_sigma_analytic.append(C_S_ana)
+    C_N_sigma_analytic.append(C_N_ana)
 
 
 # VISUALIZATION
@@ -176,18 +197,24 @@ for sigma in sigma_list:
 # plt.show()
 
 
-show_torque_drag_per_angle(aoa_list, sigma_list, Torque_list, f'results/torque_panel_aerodynamics_res_{res_x}.png',
-                               title_name="Torque on Panel",
+
+show_torque_drag_per_angle(beta_list, sigma_list, Torque_list, f'results/torque_rect_aerodynamics_res_{res_x}.png',
+                               title_name="Torque on rectangular prism",
                                x_ticks=[0, 15, 30, 45, 60, 75, 90])
 
-show_force_drag_per_angle(aoa_list, sigma_list, Force_list, f'results/force_panel_aerodynamics_res_{res_x}.png',
-                               title_name="Force on Panel",
+show_force_drag_per_angle(beta_list, sigma_list, Force_list, f'results/force_rect_aerodynamics_res_{res_x}.png',
+                               title_name="Force on rectangular prism",
                                x_ticks=[0, 15, 30, 45, 60, 75, 90])
 
-show_local_coefficient_per_angle(aoa_list, aoa_array,
-                                 C_N_sigma_analytic, C_S_sigma_analytic, C_T_sigma_analytic,
-                                 C_A_list, C_S_list, C_N_list, sigma_list, f'results/panel_aerodynamics_{res_x}.png')
+show_local_coefficient_per_angle(beta_list, beta_array,
+                                 C_A_sigma_analytic, C_S_sigma_analytic, C_N_sigma_analytic,
+                                 C_A_list, C_S_list, C_N_list, sigma_list,
+                                 f'results/rect_aerodynamics_{res_x}.png',
+                        'Rarefied Aerodynamics of a Rectangular Prism',
+                                 x_ticks=beta_list)
 
 
-show_error_local_coefficient_per_angle(aoa_list, error_C_A_list, error_C_S_list, error_C_N_list, sigma_list,
-                                           f'results/error_panel_aerodynamics_res_{res_x}.png')
+show_error_local_coefficient_per_angle(beta_list, error_C_A_list, error_C_S_list, error_C_N_list, sigma_list,
+                                           f'results/error_rect_aerodynamics_res_{res_x}.png',
+                                       title_name='Rarefied Aerodynamics error of a Rectangular Prism',
+                                       x_ticks=beta_list)

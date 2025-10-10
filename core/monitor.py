@@ -188,6 +188,7 @@ def show_ray_tracing_fast(mesh, prop: dict, filename="3d_view.png", show_miss_ra
 
     plotter.camera.position = tuple(camera_pos)
     plotter.camera.focal_point = tuple(mesh_center)
+    plane_v[2]= 1
     plotter.camera.up = tuple(plane_v)  # Up vector perpendicular to ray
 
     plotter.show_grid()
@@ -308,11 +309,12 @@ def plot_force_torque_heatmaps(res_prop, values, value_name="Force", filename="d
     components = ['X', 'Y', 'Z']
 
     vmax = np.abs(values).max()
+    vmin = 0.0 if np.min(values) >= 0.0 else -vmax
     for ax, grid, comp in zip(axes, grids, components):
         masked_grid = np.ma.masked_invalid(grid)
 
 
-        im = ax.imshow(masked_grid, cmap='RdBu_r', origin='lower', vmin=-vmax, vmax=vmax,
+        im = ax.imshow(masked_grid, cmap='RdBu_r', origin='lower', vmin=vmin, vmax=vmax,
                        aspect='auto', interpolation='nearest')
 
         ax.set_title(f'{value_name} Component {comp}', fontsize=16)
@@ -449,7 +451,8 @@ def plot_torque_heatmaps(res_prop, T_s, filename="torque_distribution.png"):
 def show_local_coefficient_per_angle(aoa_list, aoa_array,
                                      c_a_sigma_analytic, c_s_sigma_analytic, c_n_sigma_analytic,
                                      c_a_list, c_s_list, c_n_list, sigma_list,
-                                     file_name
+                                     file_name, title_name='Rarefied Aerodynamics of a Panel',
+                                     x_ticks=[0, 15, 30, 45, 60, 75, 90]
                                      ):
     colors = {
         0.0: '#6B8CD4',  # Blue
@@ -485,21 +488,32 @@ def show_local_coefficient_per_angle(aoa_list, aoa_array,
     for i, sigma in enumerate(sigma_list):
         color = colors.get(sigma, f'C{i}')  # Use predefined colors or default
 
-        # ANALYTICAL (solid lines) - all three coefficients with same color
-        line_CA, = ax.plot(aoa_array, c_a_sigma_analytic[i], '-',
-                           color=color, linewidth=1., alpha=0.95)
-        ax.plot(aoa_array, c_s_sigma_analytic[i], '-',
-                color=color, linewidth=1., alpha=0.95)
-        ax.plot(aoa_array, c_n_sigma_analytic[i], '-',
-                color=color, linewidth=1., alpha=0.95)
+        if c_a_sigma_analytic is not None and c_s_sigma_analytic is not None and c_n_sigma_analytic is not None:
+            # ANALYTICAL (solid lines) - all three coefficients with same color
+            line_CA, = ax.plot(aoa_array, c_a_sigma_analytic[i], '-',
+                               color=color, linewidth=1., alpha=0.95)
+
+            ax.plot(aoa_array, c_s_sigma_analytic[i], '-',
+                    color=color, linewidth=1., alpha=0.95)
+            ax.plot(aoa_array, c_n_sigma_analytic[i], '-',
+                    color=color, linewidth=1., alpha=0.95)
+        else:
+            # NUMERICAL/DSMC (dots) - all three coefficients with same color
+            line_CA, = ax.plot(aoa_list, c_a_list[i], '-',
+                               color=color, linewidth=1., alpha=0.95)
+
+            ax.plot(aoa_list, c_s_list[i], '-',
+                    color=color, linewidth=1., alpha=0.95)
+            ax.plot(aoa_list, c_n_list[i], '-',
+                    color=color, linewidth=1., alpha=0.95)
 
         # NUMERICAL/DSMC (dots) - all three coefficients with same color
         ax.plot(aoa_list, c_a_list[i], 'o',
                 color=color, markersize=7, markeredgewidth=0.5,
                 markeredgecolor='white', alpha=0.8)
         ax.plot(aoa_list, c_s_list[i], 'x',
-                color=color, markersize=14, markeredgewidth=0.5,
-                markeredgecolor='white', alpha=0.8)
+                color=color, markersize=14, markeredgewidth=2.5,
+                markeredgecolor=color, alpha=0.8)
         ax.plot(aoa_list, c_n_list[i], '*',
                 color=color, markersize=14, markeredgewidth=0.5,
                 markeredgecolor='white', alpha=0.8)
@@ -511,7 +525,7 @@ def show_local_coefficient_per_angle(aoa_list, aoa_array,
     # Legend (top right, clean style)
     legend = ax.legend(legend_handles, legend_labels,
                        title=r'$\sigma_{N,T}$',
-                       loc='upper right',
+                       loc='best',
                        framealpha=0.95,
                        facecolor='white',
                        edgecolor='gray',
@@ -528,22 +542,292 @@ def show_local_coefficient_per_angle(aoa_list, aoa_array,
         style='normal')
 
     # Title (optional)
-    ax.set_title('Rarefied Aerodynamics of a Panel\n' +
-                 r'$T_\infty$= 973 K, $V_\infty$= 7500 m/s, $T_W$= 300 K',
+    ax.set_title(title_name,
                  color=text_color, pad=15)
 
     # Set axis limits
     ax.set_xlim(0, 90)
-    ax.set_ylim(0, 4.5)
 
     # Make sure x-axis shows key angles
-    ax.set_xticks([0, 15, 30, 45, 60, 75, 90])
+    ax.set_xticks(x_ticks)
 
     plt.subplots_adjust(bottom=0.3)
     plt.tight_layout()
     plt.savefig(file_name, dpi=300, bbox_inches='tight',
                 facecolor='white')
+
+
+def show_error_local_coefficient_per_angle(aoa_list, error_c_a_list, error_c_s_list, error_c_n_list, sigma_list,
+                                           file_name, x_ticks=[0, 15, 30, 45, 60, 75, 90],
+                                           title_name='Rarefied Aerodynamics error of a Panel'):
+    colors = {
+        0.0: '#6B8CD4',  # Blue
+        0.25: '#7CAC9D',  # Teal
+        0.5: '#A4B86E',  # Yellow-green
+        0.75: '#D8944D',  # Orange
+        1.0: '#D87F7F'  # Pink/Red
+    }
+
+    # Create figure with WHITE background
+    fig, ax = plt.subplots(figsize=(10, 6), facecolor='white')
+    ax.set_facecolor('white')
+
+    # Set text colors for white background
+    text_color = 'black'
+    ax.tick_params(colors=text_color, which='both')
+    ax.spines['bottom'].set_color('gray')
+    ax.spines['top'].set_color('gray')
+    ax.spines['left'].set_color('gray')
+    ax.spines['right'].set_color('gray')
+
+    # Grid
+    ax.grid(True, color='gray', alpha=0.5, linewidth=0.5)
+
+    # Labels
+    ax.set_xlabel(r"Angle of attack $\alpha$ [deg]", color=text_color)
+    ax.set_ylabel(r"Error $C_{A,S,N}$ [%]", color=text_color)
+
+    # Plot data - GROUP BY SIGMA VALUE
+    legend_handles = []
+    legend_labels = []
+
+    for i, sigma in enumerate(sigma_list):
+        color = colors.get(sigma, f'C{i}')  # Use predefined colors or default
+
+        line_CA, = ax.plot(aoa_list, error_c_a_list[i], '-',
+                           color=color, linewidth=1., alpha=0.95)
+        ax.plot(aoa_list, error_c_s_list[i], '-',
+                color=color, linewidth=1., alpha=0.95)
+        ax.plot(aoa_list, error_c_n_list[i], '-',
+                color=color, linewidth=1., alpha=0.95)
+
+        # NUMERICAL/DSMC (dots) - all three coefficients with same color
+        ax.plot(aoa_list, error_c_a_list[i], 'o',
+                color=color, markersize=7, markeredgewidth=0.5,
+                markeredgecolor=color, alpha=0.8)
+        ax.plot(aoa_list, error_c_s_list[i], 'x',
+                color=color, markersize=14, markeredgewidth=1.5,
+                markeredgecolor=color, alpha=0.8)
+        ax.plot(aoa_list, error_c_n_list[i], '*',
+                color=color, markersize=14, markeredgewidth=0.5,
+                markeredgecolor=color, alpha=0.8)
+
+        # Add to legend (only once per sigma)
+        legend_handles.append(line_CA)
+        legend_labels.append(f'{sigma}')
+
+    # Legend (top right, clean style)
+    legend = ax.legend(legend_handles, legend_labels,
+                       title=r'$\sigma_{N,T}$',
+                       loc='best',
+                       framealpha=0.95,
+                       facecolor='white',
+                       edgecolor='gray',
+                       shadow=False)
+    legend.get_title().set_color(text_color)
+    legend.get_title().set_weight('bold')
+    for text in legend.get_texts():
+        text.set_color(text_color)
+
+    # Add method indicator at bottom center
+    ax.text(0.5, -0.22, r'$\circ$ $C_A$,      $\times$ $C_S$,      $\bigstar$ $C_N$,      $-$ Analytic',
+        transform=ax.transAxes,
+        ha='center', color=text_color,
+        style='normal')
+
+    # Title (optional)
+    ax.set_title(title_name, color=text_color, pad=15)
+
+    all_errors = []
+    for i in range(len(sigma_list)):
+        all_errors.extend(error_c_a_list[i])
+        all_errors.extend(error_c_s_list[i])
+        all_errors.extend(error_c_n_list[i])
+
+
+    # Set axis limits
+    error_min = min(all_errors)
+    error_max = max(all_errors)
+    margin = (error_max - error_min) * 0.1  # 10% margin
+    ax.set_ylim(error_min - margin, error_max + margin)
+    ax.set_xticks(x_ticks)
+    plt.subplots_adjust(bottom=0.3)
+    plt.tight_layout()
+    plt.savefig(file_name, dpi=300, bbox_inches='tight',
+                facecolor='white')
     plt.show()
+
+
+def show_torque_drag_per_angle(aoa_list, sigma_list, torque_list,
+                               file_name, title_name="Torque on Panel",
+                               x_ticks=[0, 15, 30, 45, 60, 75, 90]):
+    colors = {
+        0.0: '#6B8CD4',  # Blue
+        0.25: '#7CAC9D',  # Teal
+        0.5: '#A4B86E',  # Yellow-green
+        0.75: '#D8944D',  # Orange
+        1.0: '#D87F7F'  # Pink/Red
+    }
+
+    # Create figure with WHITE background
+    fig, ax = plt.subplots(3, 1, figsize=(10, 6), sharex=True, facecolor='white')
+
+    # Configure each subplot
+    text_color = 'black'
+    component_labels = ['x', 'y', 'z']
+
+    legend_handles = []
+    legend_labels = []
+
+    for i in range(3):
+        ax[i].set_facecolor('white')
+        ax[i].grid(True, color='gray', alpha=0.5, linewidth=0.5)
+        ax[i].set_ylabel(f"$\\tau_{{{component_labels[i]}}}$ [mN·m]", color=text_color)
+        ax[i].tick_params(colors=text_color, which='both')
+
+        # Set spines color
+        for spine in ax[i].spines.values():
+            spine.set_color('gray')
+
+        # Scientific notation on y-axis
+        ax[i].ticklabel_format(style='sci', axis='y', scilimits=(-3, 3))
+        ax[i].yaxis.get_offset_text().set_color(text_color)
+
+    # Plot data
+    for i, sigma in enumerate(sigma_list):
+        color = colors.get(sigma, f'C{i}')
+
+        for j in range(3):
+            line, = ax[j].plot(aoa_list, np.array(torque_list[i])[:, j] * 1000,
+                               '-o', color=color, linewidth=1.5, alpha=0.95,
+                               markersize=5, markeredgewidth=0.5)
+
+        # Add to legend only once
+        if i == 0:
+            legend_handles.append(line)
+            legend_labels.append(f'{sigma}')
+        else:
+            legend_handles.append(line)
+            legend_labels.append(f'{sigma}')
+
+    # X-axis label (only on bottom subplot)
+    ax[2].set_xlabel(r"Angle of attack $\alpha$ [deg]", color=text_color)
+    ax[2].set_xticks(x_ticks)
+
+    # Title
+    fig.suptitle(title_name, color=text_color, y=0.98)
+
+    # Single legend OUTSIDE the plot, right and centered
+    fig.legend(legend_handles, legend_labels,
+               title=r'$\sigma_{N,T}$',
+               loc='center right',
+               bbox_to_anchor=(1.001, 0.5),  # Right and centered vertically
+               framealpha=0.95,
+               facecolor='white',
+               edgecolor='gray',
+               shadow=False)
+
+    # Adjust layout to make room for legend
+    plt.tight_layout()  # Leave space on right for legend
+
+    plt.subplots_adjust(
+        left=0.13,  # Left margin
+        bottom=0.15,  # Bottom margin
+        right=0.85,  # Right margin (leave space for legend: 0.85-0.88)
+        top=0.90,  # Top margin (leave space for title)
+        wspace=0.1,  # Width space between subplots (not needed for single column)
+        hspace=0.25  # Height space between subplots (IMPORTANT for 3 rows)
+    )
+
+    plt.savefig(file_name, dpi=300, bbox_inches='tight',
+                facecolor='white')
+    return fig, ax
+
+
+def show_force_drag_per_angle(aoa_list, sigma_list, torque_list,
+                               file_name, title_name="Torque on Panel",
+                               x_ticks=[0, 15, 30, 45, 60, 75, 90]):
+    colors = {
+        0.0: '#6B8CD4',  # Blue
+        0.25: '#7CAC9D',  # Teal
+        0.5: '#A4B86E',  # Yellow-green
+        0.75: '#D8944D',  # Orange
+        1.0: '#D87F7F'  # Pink/Red
+    }
+
+    # Create figure with WHITE background
+    fig, ax = plt.subplots(3, 1, figsize=(10, 6), sharex=True, facecolor='white')
+
+    # Configure each subplot
+    text_color = 'black'
+    component_labels = ['x', 'y', 'z']
+
+    legend_handles = []
+    legend_labels = []
+
+    for i in range(3):
+        ax[i].set_facecolor('white')
+        ax[i].grid(True, color='gray', alpha=0.5, linewidth=0.5)
+        ax[i].set_ylabel(f"$F_{{{component_labels[i]}}}$ [mN]", color=text_color)
+        ax[i].tick_params(colors=text_color, which='both')
+
+        # Set spines color
+        for spine in ax[i].spines.values():
+            spine.set_color('gray')
+
+        # Scientific notation on y-axis
+        ax[i].ticklabel_format(style='sci', axis='y', scilimits=(-3, 3))
+        ax[i].yaxis.get_offset_text().set_color(text_color)
+
+    # Plot data
+    for i, sigma in enumerate(sigma_list):
+        color = colors.get(sigma, f'C{i}')
+
+        for j in range(3):
+            line, = ax[j].plot(aoa_list, np.array(torque_list[i])[:, j] * 1000,
+                               '-o', color=color, linewidth=1.5, alpha=0.95,
+                               markersize=5, markeredgewidth=0.5)
+
+        # Add to legend only once
+        if i == 0:
+            legend_handles.append(line)
+            legend_labels.append(f'{sigma}')
+        else:
+            legend_handles.append(line)
+            legend_labels.append(f'{sigma}')
+
+    # X-axis label (only on bottom subplot)
+    ax[2].set_xlabel(r"Angle of attack $\alpha$ [deg]", color=text_color)
+    ax[2].set_xticks(x_ticks)
+
+    # Title
+    fig.suptitle(title_name, color=text_color, y=0.98)
+
+    # Single legend OUTSIDE the plot, right and centered
+    fig.legend(legend_handles, legend_labels,
+               title=r'$\sigma_{N,T}$',
+               loc='center right',
+               bbox_to_anchor=(1.001, 0.5),  # Right and centered vertically
+               framealpha=0.95,
+               facecolor='white',
+               edgecolor='gray',
+               shadow=False)
+
+    # Adjust layout to make room for legend
+    plt.tight_layout()  # Leave space on right for legend
+
+    plt.subplots_adjust(
+        left=0.13,  # Left margin
+        bottom=0.15,  # Bottom margin
+        right=0.85,  # Right margin (leave space for legend: 0.85-0.88)
+        top=0.90,  # Top margin (leave space for title)
+        wspace=0.1,  # Width space between subplots (not needed for single column)
+        hspace=0.25  # Height space between subplots (IMPORTANT for 3 rows)
+    )
+
+    plt.savefig(file_name, dpi=300, bbox_inches='tight',
+                facecolor='white')
+    return fig, ax
 
 if __name__ == '__main__':
     pass

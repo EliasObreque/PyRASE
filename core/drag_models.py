@@ -90,7 +90,6 @@ def compute_fmf_drag_model(q_vel, ray_dir, normal_cell, hits_pos, area_proj, cn,
     t_drag_total = t_d.sum(axis=0)
     return f_drag_total, t_drag_total, f_d, t_d
 
-
 def compute_coefficients_schaaf(cos_th, v_mag, sigma_d, sigma_t, temp_inf, temp_wall, m_particle):
     # Schaaf and Chambre
     cos_th = np.abs(cos_th)
@@ -111,6 +110,70 @@ def compute_coefficients_schaaf(cos_th, v_mag, sigma_d, sigma_t, temp_inf, temp_
 def compute_sphere_drag_model(q_vel, v_vec, a_proj_2d_sphere):
     return q_vel * v_vec * a_proj_2d_sphere
 
+
+def compute_analytical_prism_coefficients(lx, ly, lz, alpha, beta, v_inf, sigma_n, sigma_t,
+                                          temp_inf, temp_wall, m_particle, A_ref=None):
+    """Analytical solution for rectangular prism"""
+    if A_ref is None:
+        A_ref = ly * lz
+
+    alpha_rad = np.deg2rad(alpha)
+    beta_rad = np.deg2rad(beta)
+    v_inf_vec = np.array([v_inf, 0, 0])
+
+    # Rotation matrices
+    Ry = np.array([
+        [np.cos(alpha_rad), 0, np.sin(alpha_rad)],
+        [0, 1, 0],
+        [-np.sin(alpha_rad), 0, np.cos(alpha_rad)]
+    ])
+    Rz = np.array([
+        [np.cos(beta_rad), -np.sin(beta_rad), 0],
+        [np.sin(beta_rad), np.cos(beta_rad), 0],
+        [0, 0, 1]
+    ])
+    R_body_to_inertial = Rz @ Ry
+    v_body = R_body_to_inertial.T @ v_inf_vec
+    v_body_unit = v_body / np.linalg.norm(v_body)
+
+    # 6 faces
+    faces = {
+        'x_pos': {'normal': np.array([1, 0, 0]), 'area': ly * lz},
+        'x_neg': {'normal': np.array([-1, 0, 0]), 'area': ly * lz},
+        'y_pos': {'normal': np.array([0, 1, 0]), 'area': lx * lz},
+        'y_neg': {'normal': np.array([0, -1, 0]), 'area': lx * lz},
+        'z_pos': {'normal': np.array([0, 0, 1]), 'area': lx * ly},
+        'z_neg': {'normal': np.array([0, 0, -1]), 'area': lx * ly},
+    }
+
+    F_total_body = np.zeros(3)
+
+    for face_name, face_data in faces.items():
+        normal = face_data['normal']
+        area = face_data['area']
+        cos_theta = np.dot(v_body_unit, normal)
+
+        if cos_theta > 0:
+            cn, ct = compute_coefficients_schaaf(cos_theta, v_inf, sigma_n, sigma_t,
+                                                 temp_inf, temp_wall, m_particle)
+            v_parallel = v_body_unit - cos_theta * normal
+            v_parallel_mag = np.linalg.norm(v_parallel)
+
+            if v_parallel_mag > 1e-10:
+                tangent = v_parallel / v_parallel_mag
+            else:
+                tangent = np.zeros(3)
+
+            F_normal = cn * area * normal
+            F_tangential = ct * area * tangent
+            F_total_body += F_normal + F_tangential
+
+    C_A = F_total_body[0] / A_ref
+    C_S = F_total_body[1] / A_ref
+    C_N = F_total_body[2] / A_ref
+    Cd = np.linalg.norm(F_total_body) / A_ref
+
+    return C_A, C_S, C_N, Cd
 
 # ============================================================================
 # ANALYTICAL SOLUTION - Analytic Free Molecular Aerodynamics  for Rapid Propagation of Resident Space Objects
