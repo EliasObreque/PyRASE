@@ -17,7 +17,7 @@ from tqdm import tqdm
 # ==========================
 # Constants (edit here)
 # ==========================
-DATA_PATH = "OneDrive_1_15-9-2025/ray_tracing_simulation_data.csv"      # CSV with v_x,v_y,v_z + 12 outputs
+DATA_PATH = "../OneDrive_1_15-9-2025/ray_tracing_simulation_data.csv"  # CSV with v_x,v_y,v_z + 12 outputs
 RHO       = 5e-13                # kg/m^3
 V_MAG     = 7800.0               # m/s
 P_SRP     = 4.57e-6              # N/m^2 (I/c at 1 AU)
@@ -40,7 +40,7 @@ BATCH_LIST  = [64]
 SEEDS       = [0, 1, 2]          # multiple restarts to reveal local minima
 
 # Output artifacts
-OUT_DIR = "ann_search_outputs"
+OUT_DIR = "../ann_search_outputs"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 COL_IN  = ["v_x","v_y","v_z"]
