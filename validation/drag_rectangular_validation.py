@@ -200,11 +200,11 @@ for sigma in sigma_list:
 
 show_torque_drag_per_angle(beta_list, sigma_list, Torque_list, f'results/torque_rect_aerodynamics_res_{res_x}.png',
                                title_name="Torque on rectangular prism",
-                               x_ticks=[0, 15, 30, 45, 60, 75, 90])
+                               x_ticks=beta_list)
 
 show_force_drag_per_angle(beta_list, sigma_list, Force_list, f'results/force_rect_aerodynamics_res_{res_x}.png',
                                title_name="Force on rectangular prism",
-                               x_ticks=[0, 15, 30, 45, 60, 75, 90])
+                               x_ticks=beta_list)
 
 show_local_coefficient_per_angle(beta_list, beta_array,
                                  C_A_sigma_analytic, C_S_sigma_analytic, C_N_sigma_analytic,
