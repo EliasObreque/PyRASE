@@ -181,33 +181,51 @@ def compute_ray_tracing_fast_optimized(mesh: pv.PolyData, r_source: np.ndarray,
 
 
 def filter_edge_artifacts_optimized(hits, cell_normals, cos_th, cell_ids, ray_ids, mesh):
-    """Optimized edge artifact filtering with vectorization"""
+    """
+    Remove hits near mesh edges/corners where ray tracing can hit the wrong face.
+    Keeps only hits on cells that are far from mesh boundaries.
+    """
 
-    mesh_extent = np.max(mesh.bounds) - np.min(mesh.bounds)
-    edge_tol = mesh_extent * 0.0001
+    # Get all cell centers
+    cell_centers = mesh.cell_centers().points
 
-    bounds = np.array(mesh.bounds, dtype=np.float64).reshape(3, 2)
+    # Get mesh bounds
+    bounds = np.array(mesh.bounds).reshape(3, 2)  # [[xmin, xmax], [ymin, ymax], [zmin, zmax]]
+    mesh_extent = np.max(bounds[:, 1] - bounds[:, 0])
 
-    # Vectorized boundary detection
-    on_boundary_count = np.zeros(len(hits), dtype=np.int32)
+    # Define tolerance: cells within this distance from any boundary are considered "edge cells"
+    edge_tolerance = mesh_extent * 0.02  # 2% of mesh size (adjust as needed)
+
+    # For each hit, get the cell center
+    hit_cell_centers = cell_centers[cell_ids]
+
+    # Check if cell center is near any of the 6 boundary faces
+    near_boundary = np.zeros(len(hits), dtype=bool)
 
     for axis in range(3):
-        at_min = np.abs(hits[:, axis] - bounds[axis, 0]) < edge_tol
-        at_max = np.abs(hits[:, axis] - bounds[axis, 1]) < edge_tol
-        on_boundary_count += (at_min | at_max).astype(np.int32)
+        near_min = np.abs(hit_cell_centers[:, axis] - bounds[axis, 0]) < edge_tolerance
+        near_max = np.abs(hit_cell_centers[:, axis] - bounds[axis, 1]) < edge_tolerance
+        near_boundary |= (near_min | near_max)
 
-    # Keep only hits on exactly 1 face
-    on_face_only = on_boundary_count == 1
+    # Keep only hits NOT near boundaries
+    valid_hits = ~near_boundary
 
-    n_removed = (~on_face_only).sum()
+    # Additional check: verify that the normal is pointing toward the ray source
+    # (cos_th should be negative since ray and normal point in opposite directions)
+    valid_angle = cos_th < -1e-6
+
+    # Combine both conditions
+    final_mask = valid_hits & valid_angle
+
+    n_removed = (~final_mask).sum()
     print(f"Filtering {n_removed} edge/corner artifacts ({n_removed / len(hits) * 100:.2f}%)")
 
     return {
-        'hits': hits[on_face_only],
-        'normals': cell_normals[on_face_only],
-        'cos_th': cos_th[on_face_only],
-        'cell_ids': cell_ids[on_face_only],
-        'ray_ids': ray_ids[on_face_only]
+        'hits': hits[final_mask],
+        'normals': cell_normals[final_mask],
+        'cos_th': cos_th[final_mask],
+        'cell_ids': cell_ids[final_mask],
+        'ray_ids': ray_ids[final_mask]
     }
 
 

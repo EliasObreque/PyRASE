@@ -17,7 +17,8 @@ import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 import matplotlib.pyplot as plt
 import time
-from scipy.stats import linregress
+from scipy.stats import linregress, zscore
+from sklearn.model_selection import train_test_split # splitting data up into train, val, test
 
 v_mag = 7800
 den = 5e-13
@@ -50,24 +51,20 @@ raw_force = df['f_x_d'].values
 raw_torque = df['t_x_d'].values
 
 
-means = torch.tensor([df['f_x_d'].mean(),df['f_y_d'].mean(),df['f_z_d'].mean(),df['t_x_d'].mean(),
-                      df['t_y_d'].mean(),df['t_z_d'].mean(),df['f_x_s'].mean(),df['f_y_s'].mean(),
-                      df['f_z_s'].mean(),df['t_x_s'].mean(),df['t_y_s'].mean(),df['t_z_s'].mean()])
+y_means = df[[ 'f_x_d', 'f_y_d', 'f_z_d', 't_x_d', 't_y_d', 't_z_d',
+             'f_x_s', 'f_y_s', 'f_z_s', 't_x_s', 't_y_s', 't_z_s']].mean().values
+y_stds = df[[ 'f_x_d', 'f_y_d', 'f_z_d', 't_x_d', 't_y_d', 't_z_d',
+             'f_x_s', 'f_y_s', 'f_z_s', 't_x_s', 't_y_s', 't_z_s']].std().values
+Y_data = df[[ 'f_x_d', 'f_y_d', 'f_z_d', 't_x_d', 't_y_d', 't_z_d',
+             'f_x_s', 'f_y_s', 'f_z_s', 't_x_s', 't_y_s', 't_z_s']].values
+Y_ZSCORE = (Y_data - y_means) / y_stds
 
-stds = torch.tensor([df['f_x_d'].std(),df['f_y_d'].std(),df['f_z_d'].std(),df['t_x_d'].std(),
-                      df['t_y_d'].std(),df['t_z_d'].std(),df['f_x_s'].std(),df['f_y_s'].std(),
-                      df['f_z_s'].std(),df['t_x_s'].std(),df['t_y_s'].std(),df['t_z_s'].std()])
+x_means = df[['v_x', 'v_y', 'v_z']].mean().values
+x_stds = df[['v_x', 'v_y', 'v_z']].std().values
+X_data = df[['v_x', 'v_y', 'v_z']].values
 
-means = means.numpy()
-stds = stds.numpy()
+X_ZSCORE = (X_data - x_means) / x_stds
 
-for col in df.columns:
-    if col not in ['v_x', 'v_y', 'v_z']:
-        df[col] = ((df[col] - df[col].mean()) / df[col].std())*0.1 # z-normalising data
-
-
-
-from sklearn.model_selection import train_test_split # splitting data up into train, val, test
 
 train_df, val_df = train_test_split(df, test_size=0.3, random_state=42) 
 val_df, test_df = train_test_split(val_df, test_size=1/3, random_state=42) 

@@ -76,7 +76,7 @@ for sigma in sigma_list:
         res_prop = compute_ray_tracing_fast_optimized(mesh, r_inout, res_x, res_y)
         print("time ms:", (time.time() - t0) * 1000)
 
-        # show_ray_tracing_fast(mesh, res_prop, filename="", show_mesh=True, save_3d=False)
+        show_ray_tracing_fast(mesh, res_prop, filename="", show_mesh=True, save_3d=False)
 
         # ============================================================================
         # EXTRACT RAY TRACING RESULTS
