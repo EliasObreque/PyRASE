@@ -4,14 +4,13 @@ Date: 07/10/2025
 email: els.obrq@gmail.com
 """
 
+import os
+os.environ['ENABLE_IERS_LOAD'] = 'false'
 import numpy as np
 from scipy.special import erf
-from pyatmos import download_sw_nrlmsise00,read_sw_nrlmsise00
-from pyatmos import nrlmsise00
+from pyatmos import read_sw_nrlmsise00, nrlmsise00
 
-swfile = download_sw_nrlmsise00()
-
-swdata = read_sw_nrlmsise00(swfile)
+swdata = read_sw_nrlmsise00('./core/sw_data/SW-All.csv')
 
 # === Physical parameters (SI) ===
 kB     = 1.3806488e-23 # J/K
@@ -111,31 +110,16 @@ def compute_sphere_drag_model(q_vel, v_vec, a_proj_2d_sphere):
     return q_vel * v_vec * a_proj_2d_sphere
 
 
-def compute_analytical_prism_coefficients(lx, ly, lz, alpha, beta, v_inf, sigma_n, sigma_t,
-                                          temp_inf, temp_wall, m_particle, A_ref=None):
+def compute_analytical_prism_coefficients(lx, ly, lz, v_body, sigma_n, sigma_t,
+                                          temp_inf, temp_wall, m_particle,
+                                          A_ref=None):
     """Analytical solution for rectangular prism"""
     if A_ref is None:
         A_ref = ly * lz
 
-    alpha_rad = np.deg2rad(alpha)
-    beta_rad = np.deg2rad(beta)
-    v_inf_vec = np.array([v_inf, 0, 0])
-
-    # Rotation matrices
-    Ry = np.array([
-        [np.cos(alpha_rad), 0, np.sin(alpha_rad)],
-        [0, 1, 0],
-        [-np.sin(alpha_rad), 0, np.cos(alpha_rad)]
-    ])
-    Rz = np.array([
-        [np.cos(beta_rad), -np.sin(beta_rad), 0],
-        [np.sin(beta_rad), np.cos(beta_rad), 0],
-        [0, 0, 1]
-    ])
-    R_body_to_inertial = Rz @ Ry
-    v_body = R_body_to_inertial.T @ v_inf_vec
+    v_inf = np.linalg.norm(v_body)
     v_body_unit = v_body / np.linalg.norm(v_body)
-
+    
     # 6 faces
     faces = {
         'x_pos': {'normal': np.array([1, 0, 0]), 'area': ly * lz},

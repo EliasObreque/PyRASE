@@ -6,31 +6,119 @@ email: els.obrq@gmail.com
 import os, json, math, time, random
 import numpy as np
 import pandas as pd
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import TensorDataset, DataLoader
-from sklearn.model_selection import train_test_split
+import pickle
+import time
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from sklearn.preprocessing import QuantileTransformer
+from core.ann_tools import (prepare_data_for_training, MLP, run_train, run_train_batch,
+                            evaluate_unscale, get_predictions_unscaled,
+                            get_prediction_scaled)
+from core.monitor import plot_predictions_by_axis
+
+
+
+# Output artifacts
+OUT_DIR = "../ann_search_outputs"
+os.makedirs(OUT_DIR, exist_ok=True)
+    
 
 # ==========================
-# Constants (edit here)
+# Constants 
 # ==========================
-DATA_PATH = "../OneDrive_1_15-9-2025/ray_tracing_simulation_data.csv"  # CSV with v_x,v_y,v_z + 12 outputs
-RHO       = 5e-13                # kg/m^3
-V_MAG     = 7800.0               # m/s
-P_SRP     = 4.57e-6              # N/m^2 (I/c at 1 AU)
-PRUNE_AMT = 0.6                  # global unstructured sparsity (0..0.95)
-EPOCHS    = 10                  # early-stop upper bound
-PATIENCE  = 5
+DATA_PATH = "./results/data/rect_prism_data_1000_sample_10000"  # CSV with v_x,v_y,v_z + 12 outputs
+
+with open(DATA_PATH, "rb") as file_:
+    data_mesh = pickle.load(file_)
+
+sim_data = data_mesh.get("sim_data")
+
+# Usage
+res_data = prepare_data_for_training(
+    data_mesh, 
+    output_type='drag_t', 
+    batch_size=64, 
+    seed=42,
+    normalization='minmax'  # 'minmax' ([-1,1]), 'maxabs' (scale by max|x|), 'zscore' (standard), 'quantile' (uniform distribution), or 'none'
+)
+train_loader, val_loader, test_loader, vX, vY, tX, tY, scaler, col_out = res_data
+
+# Get training data (already transformed by quantile_scale_outputs)
+y_train_transformed = train_loader.dataset.tensors[1].cpu().numpy()
+
+# Get original data for comparison
+res_data_original = prepare_data_for_training(
+    data_mesh, 
+    output_type='drag_t', 
+    batch_size=256, 
+    seed=42,
+    normalization='none'
+)
+y_train_original = res_data_original[0].dataset.tensors[1].cpu().numpy()
+
+# Plot comparison
+fig, axes = plt.subplots(2, 3, figsize=(12, 6))
+
+# Row 1: Original
+axes[0, 0].hist(y_train_original[:, 0], bins=50, alpha=0.7, color='blue')
+axes[0, 0].set_title("Original x-axis")
+axes[0, 1].hist(y_train_original[:, 1], bins=50, alpha=0.7, color='green')
+axes[0, 1].set_title("Original y-axis")
+axes[0, 2].hist(y_train_original[:, 2], bins=50, alpha=0.7, color='red')
+axes[0, 2].set_title("Original z-axis")
+
+# Row 2: After Quantile Transform (should be uniform)
+axes[1, 0].hist(y_train_transformed[:, 0], bins=50, alpha=0.7, color='blue')
+axes[1, 0].set_title("Quantile x-axis")
+axes[1, 1].hist(y_train_transformed[:, 1], bins=50, alpha=0.7, color='green')
+axes[1, 1].set_title("Quantile y-axis")
+axes[1, 2].hist(y_train_transformed[:, 2], bins=50, alpha=0.7, color='red')
+axes[1, 2].set_title("Quantile z-axis")
+
+plt.tight_layout()
+
+# Recover data using the scaler from prepare_data_for_training
+"""
+fx_recovered = scaler.inverse_transform(y_train_transformed[:, 0:1])
+fy_recovered = scaler.inverse_transform(y_train_transformed[:, 1:2])
+fz_recovered = scaler.inverse_transform(y_train_transformed[:, 2:3])
+
+# Plot recovered data
+fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+
+axes[0].hist(fx_recovered, bins=50, alpha=0.7, color='blue')
+axes[0].set_title("Recovered x-axis")
+
+axes[1].hist(fy_recovered, bins=50, alpha=0.7, color='green')
+axes[1].set_title("Recovered y-axis")
+
+axes[2].hist(fz_recovered, bins=50, alpha=0.7, color='red')
+axes[2].set_title("Recovered z-axis")
+
+plt.tight_layout()
+plt.show()
+
+# Verify recovery accuracy
+print(f"Fx recovery error: {np.abs(fx_recovered - y_train_original[:, 0:1]).max():.6f}")
+print(f"Fy recovery error: {np.abs(fy_recovered - y_train_original[:, 1:2]).max():.6f}")
+print(f"Fz recovery error: {np.abs(fz_recovered - y_train_original[:, 2:3]).max():.6f}")
+"""
+#%%
+
+IN_DIM = 3      # Input features (R, P, Y)
+OUT_DIM = 3    # Output features (12 joint angles)
+HIDDEN = 6     # Hidden neurons layer size
+
+LAYERS = 6      # Number of hidden layers
+ACTIVATION = "gelu" # {"relu": nn.ReLU, "tanh": nn.Tanh, "gelu": nn.GELU}
+EPOCHS = 10000
+LR = 0.001
+WEIGHT_DECAY = 1e-4
+PATIENCE = 1000
+
+
 FINETUNE  = 20                   # after pruning
-DEVICE    = "cpu"
-
-print(torch.cuda.is_available())   # True if GPU is working
-print(torch.version.cuda)          # Should print "12.1"
-print(torch.cuda.get_device_name(0))
-
+   
 # Hyperparameter grids
 LAYERS_LIST = [3, 4]
 HIDDEN_LIST = [4, 8]#, 12, 16]#, 24, 32, 48, 64]
@@ -39,99 +127,99 @@ LR_LIST     = [1e-3, 3e-3]
 BATCH_LIST  = [64]
 SEEDS       = [0, 1, 2]          # multiple restarts to reveal local minima
 
-# Output artifacts
-OUT_DIR = "../ann_search_outputs"
-os.makedirs(OUT_DIR, exist_ok=True)
+# Create and Train Model
+model = MLP(
+    in_dim=IN_DIM,
+    out_dim=OUT_DIM,
+    hidden=HIDDEN,
+    layers=LAYERS,
+    activation=ACTIVATION
+)
 
-COL_IN  = ["v_x","v_y","v_z"]
-COL_OUT = ['f_x_d','f_y_d','f_z_d','t_x_d','t_y_d','t_z_d',
-           'f_x_s','f_y_s','f_z_s','t_x_s','t_y_s','t_z_s']
+
+
+print(f"\nModel Architecture:")
+print(model)
+print(f"\nTotal parameters: {sum(p.numel() for p in model.parameters()):,}")
+
+
+#model, best_val_loss = run_train(
+#    model=model,
+#    train_loader=train_loader,
+#    val_loader=val_loader,
+#    epochs=EPOCHS,
+#    lr=LR,
+#    weight_decay=WEIGHT_DECAY,
+#    patience=PATIENCE,
+#)
+model, best_val_loss, train_losses, val_losses = run_train_batch(
+    model=model,
+    train_loader=train_loader,
+    val_loader=val_loader,
+    epochs=EPOCHS,
+    lr=LR,
+    weight_decay=WEIGHT_DECAY,
+    patience=PATIENCE
+)
+
+print(f"\nBest validation loss: {best_val_loss:.6f}")
 
 # ==========================
-# Data prep
+# Evaluate on All Sets
 # ==========================
-def factor_targets(df, v_mag, rho, P):
-    for c in ['f_x_d','f_y_d','f_z_d','t_x_d','t_y_d','t_z_d']:
-        df[c] = df[c] * (2.0/(rho*(v_mag**2)))
-    for c in ['f_x_s','f_y_s','f_z_s','t_x_s','t_y_s','t_z_s']:
-        df[c] = df[c] * (1.0/P)
-    return df
+print("\n" + "="*50)
+print("Evaluation Results")
+print("="*50)
 
-def zscale_outputs(df):
-    means = df[COL_OUT].mean().values.astype(np.float32)
-    stds  = df[COL_OUT].std().values.astype(np.float32)
-    df[COL_OUT] = (df[COL_OUT] - means) / stds
-    return df, means, stds
+#%%
 
-def make_loaders(df, batch, seed=42):
-    train_df, tmp = train_test_split(df, test_size=0.30, random_state=seed)
-    val_df, test_df = train_test_split(tmp, test_size=1/3, random_state=seed)
-    def to_dl(split_df, shuffle=False):
-        X = torch.tensor(split_df[COL_IN].values, dtype=torch.float32)
-        Y = torch.tensor(split_df[COL_OUT].values, dtype=torch.float32)
-        ds = TensorDataset(X,Y)
-        return DataLoader(ds, batch_size=batch, shuffle=shuffle), X, Y
-    train_loader, _, _ = to_dl(train_df, shuffle=True)
-    val_loader,   vX, vY   = to_dl(val_df)
-    test_loader,  tX, tY = to_dl(test_df)
-    return train_loader, val_loader, test_loader, vX, vY, tX, tY
 
-# ==========================
-# Model / train / eval
-# ==========================
-class MLP(nn.Module):
-    def __init__(self, in_dim=3, out_dim=12, hidden=16, layers=2, activation="relu"):
-        super().__init__()
-        acts = {"relu": nn.ReLU, "tanh": nn.Tanh, "gelu": nn.GELU}
-        Act = acts[activation]
-        seq = []
-        last = in_dim
-        for _ in range(layers):
-            seq += [nn.Linear(last, hidden), Act()]
-            last = hidden
-        seq += [nn.Linear(last, out_dim), nn.Tanh()]  # bounded head like your baseline
-        self.net = nn.Sequential(*seq)
-    def forward(self, x): return self.net(x)
+# Get predictions for validation set
+print("\nEvaluating validation set...")
+t0 = time.time()
+P_val, Y_val, X_val = get_predictions_unscaled(model, vX, vY, scaler)
+print(time.time() - t0)
+# Get predictions for test set
+print("Evaluating test set...")
+P_test, Y_test, X_test = get_predictions_unscaled(model, tX, tY, scaler)
 
-def run_train(model, train_loader, val_loader, epochs, lr, weight_decay=0.0, patience=20, device="cpu"):
-    model.to(device)
-    crit = nn.MSELoss()
-    opt = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-    best = math.inf; best_state=None; no_improve=0
-    for ep in tqdm(range(epochs)):
-        model.train()
-        for xb,yb in train_loader:
-            xb=xb.to(device); yb=yb.to(device)
-            pred = model(xb); loss = crit(pred,yb)
-            opt.zero_grad(); loss.backward(); opt.step()
-        # val
-        model.eval()
-        vtot=0.0; vn=0
-        with torch.no_grad():
-            for xb,yb in val_loader:
-                xb=xb.to(device); yb=yb.to(device)
-                vtot += crit(model(xb), yb).item()*xb.size(0); vn += xb.size(0)
-        val_loss = vtot/max(vn,1)
-        if val_loss < best - 1e-9:
-            best = val_loss; best_state = {k:v.cpu().clone() for k,v in model.state_dict().items()}
-            no_improve = 0
-        else:
-            no_improve += 1
-            if no_improve >= patience: break
-    if best_state is not None: model.load_state_dict(best_state)
-    return model, best
 
-def evaluate_unscale(model, X, Y, means, stds, device="cpu"):
-    model.eval(); X=X.to(device); Y=Y.to(device)
-    with torch.no_grad():
-        P = model(X)
-    means_t = torch.tensor(means, dtype=P.dtype, device=P.device).view(1,-1)
-    stds_t  = torch.tensor(stds,  dtype=P.dtype, device=P.device).view(1,-1)
-    P_real  = P*stds_t*10 + means_t
-    Y_real  = Y*stds_t*10 + means_t
-    mae = torch.mean(torch.abs(P_real - Y_real)).item()
-    rmse = torch.sqrt(torch.mean((P_real - Y_real)**2)).item()
-    return mae, rmse
+plt.figure(figsize=(10, 6))
+plt.plot(train_losses, label='Training Loss', linewidth=2)
+plt.plot(val_losses, label='Validation Loss', linewidth=2)
+plt.xlabel('Epoch', fontsize=12)
+plt.ylabel('Loss (MSE)', fontsize=12)
+plt.title('Training and Validation Loss', fontsize=14, fontweight='bold')
+plt.legend(fontsize=11)
+plt.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.yscale("log")
+plt.savefig('training_curves.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+print(f"\nFinal Results:")
+print(f"Best Validation Loss: {best_val_loss:.6f}")
+
+#%%
+
+q_inf = sim_data["q_inf"]
+
+P_np, Y_np, X_np = get_prediction_scaled(model, tX, tY, scaler)
+    
+print("\nGenerating validation set plots...")
+fig_val_forces, fig_val_torques = plot_predictions_by_axis(
+    P_np, Y_np, title_prefix="Validation Set")
+
+#%%
+P_train, Y_train, X_train = get_predictions_unscaled(model, train_loader.dataset.tensors[0], 
+                                                       train_loader.dataset.tensors[1], scaler)
+
+fig_val_forces, fig_val_torques = plot_predictions_by_axis(
+    P_train, Y_train, title_prefix="Training Set")
+
+
+"""
+
 
 def count_params(model):
     return sum(p.numel() for p in model.parameters())
@@ -149,10 +237,10 @@ def global_prune(model, amount=0.6):
                 prune.remove(m, "weight")
     return model
 
-# ==========================
-# Search + plots
-# ==========================
-def main():
+
+
+if __name__ == "__main__":
+    
     t0 = time.time()
     df = pd.read_csv(DATA_PATH)
     assert set(COL_IN+COL_OUT).issubset(df.columns), "CSV must contain: " + ",".join(COL_IN+COL_OUT)
@@ -315,6 +403,4 @@ def main():
     with open(os.path.join(OUT_DIR, "report.json"), "w") as f:
         json.dump(report, f, indent=2)
     print(json.dumps(report, indent=2))
-
-if __name__ == "__main__":
-    main()
+"""
