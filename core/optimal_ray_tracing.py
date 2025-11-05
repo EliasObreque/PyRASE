@@ -10,7 +10,8 @@ from scipy.ndimage import label, binary_dilation, generate_binary_structure
 from core.monitor import show_ray_tracing_fast
 
 def compute_ray_tracing_fast_optimized(mesh: pv.PolyData, r_source: np.ndarray,
-                                       res_x: int, res_y: int, fill_gaps=True):
+                                       res_x: int, res_y: int, fill_gaps=True,
+                                       verbose=1):
     """
     Optimized ray tracing with pure NumPy vectorization.
 
@@ -155,7 +156,9 @@ def compute_ray_tracing_fast_optimized(mesh: pv.PolyData, r_source: np.ndarray,
 
     # === 10. Post-processing (OPTIMIZED) ===
     if fill_gaps:
-        res_prop = fill_gaps_by_spatial_interpolation_optimized(res_prop, max_gap_size=10)
+        res_prop = fill_gaps_by_spatial_interpolation_optimized(res_prop, 
+                                                                max_gap_size=10,
+                                                                verbose=verbose)
 
     # filtered = filter_edge_artifacts_optimized(
     #     res_prop['hit_points'],
@@ -174,7 +177,7 @@ def compute_ray_tracing_fast_optimized(mesh: pv.PolyData, r_source: np.ndarray,
 
     Area_r = np.abs(px_area / res_prop['cos_th'])
     area_aux = px_area / np.cos(89 * np.pi / 180)
-    print(area_aux, 5 * px_area)
+    # print(area_aux, 5 * px_area)
     Area_r[Area_r > area_aux] = area_aux
     res_prop['area_proj'] = Area_r
     return res_prop
@@ -229,7 +232,7 @@ def filter_edge_artifacts_optimized(hits, cell_normals, cos_th, cell_ids, ray_id
     }
 
 
-def fill_gaps_by_spatial_interpolation_optimized(res_prop, max_gap_size=2):
+def fill_gaps_by_spatial_interpolation_optimized(res_prop, max_gap_size=2, verbose=1):
     """Optimized gap filling with vectorized projection"""
 
     hit_points = res_prop['hit_points']
@@ -310,12 +313,14 @@ def fill_gaps_by_spatial_interpolation_optimized(res_prop, max_gap_size=2):
                         filled_cos_th.append(np.mean(neighbor_cos))
                         filled_i_indices.append(i)
                         filled_j_indices.append(j)
-
+                        
     if len(filled_points) == 0:
-        print("No isolated gaps found to fill")
+        if verbose:
+            print("No isolated gaps found to fill")
         return res_prop
-
-    print(f"Filled {len(filled_points)} isolated gap pixels by interpolation")
+    
+    if verbose:
+        print(f"Filled {len(filled_points)} isolated gap pixels by interpolation")
 
     # Vectorized normalization
     filled_normals = np.array(filled_normals)

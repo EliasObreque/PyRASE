@@ -133,7 +133,7 @@ def show_ray_tracing_fast(mesh, prop: dict, filename="3d_view.png", show_miss_ra
         hit_starts = ray_starts[ray_ids]
         hit_ends = hit_points
         seg_hits = _segments_to_polydata(hit_starts, hit_ends)
-        plotter.add_mesh(seg_hits, color="blue", line_width=0.8, opacity=1)
+        plotter.add_mesh(seg_hits, color="blue", line_width=0.4, opacity=0.4)
 
     # === Rays that miss (yellow, optional) ===
     # This can be heavy, so make it optional or with subsampling
@@ -396,11 +396,11 @@ def plot_torque_heatmaps(res_prop, T_s, filename="torque_distribution.png"):
         ax.set_title(f'Torque Component {comp} [N·m]', fontsize=16)
         ax.set_xlabel('Pixel Index (u direction)', fontsize=14)
         ax.set_ylabel('Pixel Index (v direction)', fontsize=14)
-
+        ax.set_aspect('equal', adjustable='box')
         cbar = plt.colorbar(im, ax=ax)
-        ax.grid(True, alpha=0.3, linewidth=0.5, color='white')
+     
 
-    plt.suptitle('Torque Distribution on Pixel Plane', fontsize=18)
+    plt.suptitle('Torque Distribution', fontsize=18)
     plt.tight_layout()
 
     if filename:
@@ -828,6 +828,142 @@ def show_force_drag_per_angle(aoa_list, sigma_list, torque_list,
     plt.savefig(file_name, dpi=300, bbox_inches='tight',
                 facecolor='white')
     return fig, ax
+
+
+def plot_sphere_distribution(mesh, data_mesh, columns_data, filename, show=False):
+    # Create plotter with 3 columns
+    plotter = pv.Plotter(shape=(1, 3), border=False, window_size=[1600, 500],
+                         off_screen=True if not show else False
+                         )
+
+    # Convert lists to numpy arrays for easier handling
+    r_vectors = np.array(data_mesh["r_"])
+
+
+    # Scale factor for vector origin (adjust as needed)
+    origin_scale = 5
+
+    origins = -r_vectors * origin_scale
+    for col, values, title, scalar_name, view_ in columns_data:
+        plotter.subplot(0, col)
+        
+        # Add mesh
+        plotter.add_mesh(mesh, opacity=1, color='lightgray', 
+                         show_edges=True, edge_color='black', line_width=1)
+        
+        points = pv.PolyData(-r_vectors * origin_scale)
+        
+        # Add colored points
+        plotter.add_mesh(points, scalars=values, point_size=10, 
+                         render_points_as_spheres=True, 
+                         opacity=0.7,
+                         cmap='coolwarm',
+                         scalar_bar_args={
+                             'title': scalar_name,
+                             'title_font_size': 30,
+                             'label_font_size': 30,
+                             'vertical': True, 
+                             'position_x': 0.8,
+                             'position_y': 0.1,
+                             'width': 0.05,
+                             'fmt': '%.2f', 
+                             'height': 0.8
+                         })
+        
+        plotter.add_title(title, font_size=14)
+        plotter.add_axes()
+        #for i in range(len(r_vectors)):
+        #    arrow = pv.Arrow(start=origins[i], direction=r_vectors[i], 
+        #                     scale='auto', tip_length=0.3, shaft_radius=0.01)
+        #    plotter.add_mesh(arrow, color='black', opacity=0.3)
+            
+        plotter.camera_position = view_
+
+    # Link cameras for synchronized rotation
+    # plotter.link_views()
+
+    plotter.show(
+        screenshot=filename
+        )
+
+
+def plot_predictions_by_axis(P_real, Y_real, title_prefix=""):
+    """
+    Create separate plots for forces and torques.
+    Forces: 3 rows (Fx, Fy, Fz)
+    Torques: 3 rows (Tx, Ty, Tz)
+    
+    Args:
+        P_real: Predictions array (N, 6) - [Fx, Fy, Fz, Tx, Ty, Tz]
+        Y_real: Ground truth array (N, 6) - [Fx, Fy, Fz, Tx, Ty, Tz]
+        title_prefix: Prefix for plot titles
+    """
+    # Output is: [Fx, Fy, Fz, Tx, Ty, Tz]
+    force_indices = [0, 1, 2]   # Fx, Fy, Fz
+    torque_indices = [3, 4, 5]  # Tx, Ty, Tz
+    
+    axis_labels = ['x', 'y', 'z']
+    
+    # ==================== FORCES PLOT ====================
+    fig1, axes1 = plt.subplots(1, 3, figsize=(12, 5))
+    fig1.suptitle(f'{title_prefix} - Force Predictions vs Ground Truth (PyRase)', fontweight='bold')
+    
+    for i, (idx, label) in enumerate(zip(force_indices, axis_labels)):
+        ax = axes1[i]
+        
+        # Scatter plot: Predicted vs Actual
+        ax.scatter(Y_real[:, idx], P_real[:, idx], alpha=0.5, s=20, label='Predictions')
+        
+        # Perfect prediction line
+        min_val = min(Y_real[:, idx].min(), P_real[:, idx].min())
+        max_val = max(Y_real[:, idx].max(), P_real[:, idx].max())
+        ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Perfect Prediction')
+        
+        # Calculate metrics
+        mae = np.mean(np.abs(P_real[:, idx] - Y_real[:, idx]))
+        rmse = np.sqrt(np.mean((P_real[:, idx] - Y_real[:, idx])**2))
+        r2 = 1 - np.sum((Y_real[:, idx] - P_real[:, idx])**2) / np.sum((Y_real[:, idx] - Y_real[:, idx].mean())**2)
+        
+        ax.set_xlabel(f'PyRase {label}-axis (mN)')
+        ax.set_ylabel(f'Predicted F{label} (mN)')
+        ax.set_title(f'MAE: {mae:.3f} mN \n RMSE: {rmse:.3f} mN |R²: {r2:.3f}')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        ax.set_aspect('equal', adjustable='box')
+    
+    plt.tight_layout()
+    
+    # ==================== TORQUES PLOT ====================
+    fig2, axes2 = plt.subplots(1, 3, figsize=(12, 5))
+    fig2.suptitle(f'{title_prefix} - Torque Predictions vs Ground Truth (PyRase)', fontweight='bold')
+    
+    for i, (idx, label) in enumerate(zip(torque_indices, axis_labels)):
+        ax = axes2[i]
+        
+        # Scatter plot: Predicted vs Actual
+        ax.scatter(Y_real[:, idx], P_real[:, idx], alpha=0.5, s=20, color='orange', label='Predictions')
+        
+        # Perfect prediction line
+        min_val = min(Y_real[:, idx].min(), P_real[:, idx].min())
+        max_val = max(Y_real[:, idx].max(), P_real[:, idx].max())
+        ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Perfect Prediction')
+        
+        # Calculate metrics
+        mae = np.mean(np.abs(P_real[:, idx] - Y_real[:, idx]))
+        rmse = np.sqrt(np.mean((P_real[:, idx] - Y_real[:, idx])**2))
+        r2 = 1 - np.sum((Y_real[:, idx] - P_real[:, idx])**2) / np.sum((Y_real[:, idx] - Y_real[:, idx].mean())**2)
+        
+        ax.set_xlabel(f'PyRase {label}-axis (mNm)')
+        ax.set_ylabel(f'Predicted T{label} (mNm)')
+        ax.set_title(f'MAE: {mae:.3f} mNm \n RMSE: {rmse:.3f} mNm | R²: {r2:.3f}')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        ax.set_aspect('equal', adjustable='box')
+    
+    plt.tight_layout()
+    
+    return fig1, fig2
+
 
 if __name__ == '__main__':
     pass

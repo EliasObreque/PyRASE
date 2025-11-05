@@ -1,0 +1,13 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs/ml-base-model-for-drag-and-srp/FileContentIndex
+/.vs
+/src/__pycache__
+/validation/__pycache__
+/core/__pycache__
+/results
+/__pycache__
+/OneDrive_1_15-9-2025/__pycache__
+/models/__pycache__

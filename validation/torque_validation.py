@@ -9,7 +9,6 @@ import numpy as np
 
 import pyvista as pv
 from matplotlib import pyplot as plt
-from networkx.classes.filters import show_edges
 from scipy.spatial.transform.rotation import Rotation
 from core.monitor import (show_ray_tracing_fast, show_local_coefficient_per_angle,
                           show_error_local_coefficient_per_angle, show_torque_drag_per_angle,
@@ -30,7 +29,7 @@ sigma_list = [0, 0.25, 0.5, 0.75, 1.0]
 aoa_list = [-30, -15, 0, 15, 30]
 #0, 15, 30, 45, 60, 75, 77.5,
 res_ = 50
-res_x = res_y = 500
+res_x = res_y = 100
 A_ref = 4
 C_A_list = []
 C_N_list = []
@@ -45,7 +44,7 @@ error_C_S_list = []
 
 Area_list = []
 
-reader = pv.get_reader("../models/fan test v0.stl")
+reader = pv.get_reader("./models/fan test v0.stl")
 mesh = reader.read()
 # mesh.rotate_y(90, inplace=True)
 mesh = mesh.triangulate().clean()
@@ -53,9 +52,9 @@ mesh.points *= 1e-3
 mesh = mesh.compute_normals(cell_normals=True, point_normals=False, inplace=False)
 # mesh = mesh.subdivide(2, subfilter='linear').clean()
 com_m = np.array(mesh.center)
-# mesh.plot(show_edges=True)
-
+#mesh.plot(show_edges=True)
 for sigma in sigma_list:
+
     C_A_sigma = []
     C_N_sigma = []
     C_S_sigma = []
@@ -70,7 +69,7 @@ for sigma in sigma_list:
     for aoa in aoa_list:
         rot_ = Rotation.from_euler('y', aoa, degrees=True)
 
-        r_inout = np.array([1, 0, 0])
+        r_inout = np.array([-1, 0, 0])
         # com_m = rot_.as_matrix() @ com_m
 
         r_inout = rot_.as_matrix() @ r_inout
@@ -106,7 +105,7 @@ for sigma in sigma_list:
                                                                       hits, Area_r, cn, ct,
                                                                       com_m=com_m)
 
-        # plot_torque_heatmaps(res_prop, T_d, f"results/torque_distribution_fan_{res_x}_{aoa}.png")
+        plot_torque_heatmaps(res_prop, T_d, f"results/torque_distribution_fan_{res_x}_{aoa}.png")
         torque_sigma.append(T_drag_total)
         force_sigma.append(F_drag_total)
         # Drag coefficient from ray tracing
