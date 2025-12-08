@@ -32,6 +32,7 @@ print(f"Using device: {DEVICE}")
 COL_IN = ['r_x', 'r_y', 'r_z']
 COL_OUT_DRAG_F = ['Fx_drag', 'Fy_drag', 'Fz_drag']
 COL_OUT_DRAG_T = ['Tx_drag', 'Ty_drag', 'Tz_drag']
+COL_OUT_DRAG = COL_OUT_DRAG_F + COL_OUT_DRAG_T
 COL_OUT_SRP = ['Fx_srp', 'Fy_srp', 'Fz_srp', 'Tx_srp', 'Ty_srp', 'Tz_srp']
 COL_OUT_ALL = COL_OUT_DRAG_F + COL_OUT_DRAG_T + COL_OUT_SRP
 
@@ -120,7 +121,7 @@ def minmax_scale_outputs(train_df, val_df, test_df, col_out, feature_range=(-1, 
         train_df, val_df, test_df (normalized), scaler object
     """
     # Initialize scaler
-    feature_range = (0, 2)
+    feature_range = (-1, 1)
     scaler = MinMaxScaler(feature_range=feature_range)
     
     # Fit on training data only
@@ -227,6 +228,8 @@ def prepare_data_for_training(data_mesh, output_type='drag', batch_size=32, seed
         col_out = COL_OUT_DRAG_F
     elif output_type == 'drag_t':
         col_out = COL_OUT_DRAG_T
+    elif output_type == "drag":
+        col_out = COL_OUT_DRAG
     elif output_type == 'srp':
         col_out = COL_OUT_SRP
     elif output_type == 'all':
@@ -289,7 +292,7 @@ def prepare_data_for_training(data_mesh, output_type='drag', batch_size=32, seed
 class MLP(nn.Module):
     def __init__(self, in_dim=3, out_dim=12, hidden=16, layers=2, activation="relu"):
         super().__init__()
-        acts = {"relu": nn.ReLU, "tanh": nn.Tanh, "gelu": nn.GELU}
+        acts = {"relu": nn.ReLU, "tanh": nn.Tanh, "gelu": nn.GELU, "sigmoid": nn.Sigmoid}
         Act = acts[activation]
         seq = []
         last = in_dim

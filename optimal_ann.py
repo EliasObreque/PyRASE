@@ -36,7 +36,7 @@ sim_data = data_mesh.get("sim_data")
 # Usage
 res_data = prepare_data_for_training(
     data_mesh, 
-    output_type='drag_t', 
+    output_type='drag', 
     batch_size=64, 
     seed=42,
     normalization='minmax'  # 'minmax' ([-1,1]), 'maxabs' (scale by max|x|), 'zscore' (standard), 'quantile' (uniform distribution), or 'none'
@@ -49,7 +49,7 @@ y_train_transformed = train_loader.dataset.tensors[1].cpu().numpy()
 # Get original data for comparison
 res_data_original = prepare_data_for_training(
     data_mesh, 
-    output_type='drag_t', 
+    output_type='drag', 
     batch_size=256, 
     seed=42,
     normalization='none'
@@ -105,16 +105,16 @@ print(f"Fz recovery error: {np.abs(fz_recovered - y_train_original[:, 2:3]).max(
 """
 #%%
 
-IN_DIM = 3      # Input features (R, P, Y)
+IN_DIM = 6      # Input features (R, P, Y)
 OUT_DIM = 3    # Output features (12 joint angles)
-HIDDEN = 6     # Hidden neurons layer size
+HIDDEN = 20     # Hidden neurons layer size
 
-LAYERS = 6      # Number of hidden layers
-ACTIVATION = "gelu" # {"relu": nn.ReLU, "tanh": nn.Tanh, "gelu": nn.GELU}
-EPOCHS = 10000
-LR = 0.001
+LAYERS = 20      # Number of hidden layers
+ACTIVATION = "tanh" # {"relu": nn.ReLU, "tanh": nn.Tanh, "gelu": nn.GELU, "sigmoid"}
+EPOCHS = 1000
+LR = 0.01
 WEIGHT_DECAY = 1e-4
-PATIENCE = 1000
+PATIENCE = 200
 
 
 FINETUNE  = 20                   # after pruning
