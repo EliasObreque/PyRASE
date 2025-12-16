@@ -32,6 +32,21 @@ from core.ann_tools import (
     run_train_batch,
     get_predictions_unscaled
 )
+import matplotlib as mpl
+mpl.rcParams.update({
+    "font.family": "serif",                     # generic family
+    "font.serif": ["Times New Roman", "Times"], # try exact TNR first
+    "font.size": 18,                            # default text size
+    "axes.titlesize": 18,                       # axes title
+    "axes.labelsize": 18,                       # x/y labels
+    "xtick.labelsize": 18,                      # tick labels
+    "ytick.labelsize": 18,
+    "legend.fontsize": 16,
+    "figure.titlesize": 18,
+    # Math text configured to look like Times
+    "mathtext.fontset": "stix",                 # STIX resembles Times
+    "mathtext.rm": "Times New Roman",
+})
 
 # ==========================
 # CONFIGURATION
@@ -56,12 +71,12 @@ THRESHOLD_VALUE = None  # Set to 1e-4 if needed
 # HYPERPARAMETER GRID
 # ==========================
 
-LAYERS_LIST = [3, 4, 5]  # Number of hidden layers
-HIDDEN_LIST = [4, 6, 8]  # Neurons per hidden layer
+LAYERS_LIST = [3, 4]  # Number of hidden layers
+HIDDEN_LIST = [4, 6]  # Neurons per hidden layer
 ACT_LIST = ["relu", "tanh"]  # Activation functions
 LR_LIST = [1e-2, 1e-3]  # Learning rates
 BATCH_LIST = [64, 128]  # Batch sizes
-SEEDS = [0, 1, 2]  # Random seeds for reproducibility
+SEEDS = [0, 1]  # Random seeds for reproducibility
 
 # Training parameters
 EPOCHS = 100
@@ -209,10 +224,10 @@ def save_training_curves(train_losses, val_losses, save_path):
     plt.figure(figsize=(10, 6))
     plt.plot(train_losses, label='Training Loss', linewidth=2, alpha=0.8)
     plt.plot(val_losses, label='Validation Loss', linewidth=2, alpha=0.8)
-    plt.xlabel('Epoch', fontsize=12)
-    plt.ylabel('Loss', fontsize=12)
-    plt.title('Training Curves', fontsize=14, fontweight='bold')
-    plt.legend(fontsize=11)
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training Curves',fontweight='bold')
+    plt.legend()
     plt.grid(True, alpha=0.3)
     plt.yscale('log')
     plt.tight_layout()
@@ -253,10 +268,10 @@ def evaluate_and_save_predictions(model, test_loader, scaler, config_dir, model_
         max_val = max(Y_test[:, i].max(), P_test[:, i].max())
         ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Perfect')
 
-        ax.set_xlabel(f'True {name}', fontsize=11)
-        ax.set_ylabel(f'Predicted {name}', fontsize=11)
-        ax.set_title(f'{name} Predictions', fontsize=12, fontweight='bold')
-        ax.legend(fontsize=9)
+        ax.set_xlabel(f'True {name}')
+        ax.set_ylabel(f'Predicted {name}')
+        ax.set_title(f'{name} Predictions', fontweight='bold')
+        ax.legend()
         ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -539,9 +554,9 @@ def create_comparison_plots(results_df, out_dir):
                 color='red', s=200, marker='*', zorder=5,
                 label=f'Best (Config {best_config_id})')
 
-    plt.xlabel('Configuration ID', fontsize=12)
-    plt.ylabel('Validation Loss (mean ± std)', fontsize=12)
-    plt.title('All Configurations Performance', fontsize=14, fontweight='bold')
+    plt.xlabel('Configuration ID')
+    plt.ylabel('Validation Loss (mean ± std)')
+    plt.title('All Configurations Performance', fontweight='bold')
     plt.grid(True, alpha=0.3)
     plt.legend(fontsize=11)
     plt.tight_layout()
@@ -563,10 +578,10 @@ def create_comparison_plots(results_df, out_dir):
         plt.errorbar(grouped.index, grouped['mean'], yerr=grouped['std'],
                      marker='o', label=act, capsize=5, markersize=8, linewidth=2)
 
-    plt.xlabel('Number of Layers', fontsize=12)
-    plt.ylabel('Validation Loss (mean ± std)', fontsize=12)
-    plt.title('Effect of Network Depth', fontsize=14, fontweight='bold')
-    plt.legend(fontsize=11, title='Activation')
+    plt.xlabel('Number of Layers')
+    plt.ylabel('Validation Loss (mean ± std)')
+    plt.title('Effect of Network Depth', fontweight='bold')
+    plt.legend(title='Activation')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
@@ -587,10 +602,10 @@ def create_comparison_plots(results_df, out_dir):
         plt.errorbar(grouped.index, grouped['mean'], yerr=grouped['std'],
                      marker='s', label=act, capsize=5, markersize=8, linewidth=2)
 
-    plt.xlabel('Number of Neurons per Layer', fontsize=12)
-    plt.ylabel('Validation Loss (mean ± std)', fontsize=12)
-    plt.title('Effect of Network Width', fontsize=14, fontweight='bold')
-    plt.legend(fontsize=11, title='Activation')
+    plt.xlabel('Number of Neurons per Layer')
+    plt.ylabel('Validation Loss (mean ± std)')
+    plt.title('Effect of Network Width', fontweight='bold')
+    plt.legend(title='Activation')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
@@ -607,10 +622,10 @@ def create_comparison_plots(results_df, out_dir):
         plt.scatter(subset['parameters'], subset['val_loss_mean'],
                     alpha=0.7, s=80, label=act)
 
-    plt.xlabel('Number of Parameters', fontsize=12)
-    plt.ylabel('Validation Loss', fontsize=12)
-    plt.title('Model Complexity vs Performance', fontsize=14, fontweight='bold')
-    plt.legend(fontsize=11, title='Activation')
+    plt.xlabel('Number of Parameters')
+    plt.ylabel('Validation Loss')
+    plt.title('Model Complexity vs Performance', fontweight='bold')
+    plt.legend(title='Activation')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
@@ -629,11 +644,11 @@ def create_comparison_plots(results_df, out_dir):
         plt.errorbar(grouped.index, grouped['mean'], yerr=grouped['std'],
                      marker='D', label=act, capsize=5, markersize=8, linewidth=2)
 
-    plt.xlabel('Learning Rate', fontsize=12)
-    plt.ylabel('Validation Loss (mean ± std)', fontsize=12)
-    plt.title('Effect of Learning Rate', fontsize=14, fontweight='bold')
+    plt.xlabel('Learning Rate')# , fontsize=12)
+    plt.ylabel('Validation Loss (mean ± std)')#, fontsize=12)
+    plt.title('Effect of Learning Rate', fontweight='bold')
     plt.xscale('log')
-    plt.legend(fontsize=11, title='Activation')
+    plt.legend(title='Activation')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
