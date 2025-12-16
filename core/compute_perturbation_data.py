@@ -86,31 +86,19 @@ def compute_ann_data(mesh, sphere_vectors:np.ndarray, sim_data: dict,
         
         for r_inout in tqdm(sphere_vectors, "Computation of perturbation", N_SAMPLE):
             res_prop = compute_ray_tracing_fast_optimized(mesh, r_inout, res_x, res_y, verbose=0)
-                
-            hits = res_prop['hit_points']  # (N,3), m
-            ray_dir = r_inout
-            cos_th = res_prop['cos_th']  # cos(θ) where θ is angle between ray and normal
-            normal_cell = res_prop['cell_normal']  # (N,3)
-            # A_fem = res_prop['A_fem']
-            Area_r = res_prop['area_proj']
-            
-            cn, ct = compute_coefficients_schaaf(cos_th, v_inf, sigma_N, sigma_T, T_inf, T_wall, m_particle)
-        
-            F_drag_total, T_drag_total, F_d, T_d = compute_fmf_drag_model(q_inf, ray_dir, normal_cell,
-                                                                          hits, Area_r, cn, ct)
-         
-           
+
+            F_drag_total, T_drag_total, F_srp_total, T_srp_total = compute_ray_perturbation_step(res_prop, sim_data)
+
             C_A = F_drag_total[0] / (q_inf * A_ref)
             C_N = F_drag_total[2] / (q_inf * A_ref)
             C_S = F_drag_total[1] / (q_inf * A_ref)
-        
-            
+
             # ERROR
             if save_analytical:
                 ca, cs, cn, _ = compute_analytical_prism_coefficients(
                     lx, ly, lz, r_inout * v_inf, sigma_N, sigma_T,
                     T_inf, T_wall, m_particle, A_ref
-                    )
+                )
 
                 error_ca = C_A - ca
                 error_cn = C_N - cn
@@ -118,18 +106,7 @@ def compute_ann_data(mesh, sphere_vectors:np.ndarray, sim_data: dict,
             else:
                 ca = cn = cs = 99
                 error_ca = error_cn = error_cs = 99
-                
-            
-            # SRP
-            
-            F_srp_total, T_srp_total, F_s, T_s = compute_srp_lambert_model(res_prop,
-                                                                           r_inout,
-                                                                           np.zeros(3),
-                                                                           diffuse,
-                                                                           spec,
-                                                                           P_SRP)
-            
-        
+
             Cr_model = np.linalg.norm(F_srp_total) / A_ref / P_SRP
         
             error_cr = Cr_model - Cr
@@ -168,7 +145,48 @@ def compute_ann_data(mesh, sphere_vectors:np.ndarray, sim_data: dict,
             data_mesh = pickle.load(file_)
             
     return data_mesh
-    
+
+
+def compute_ray_perturbation_step(res_prop, sim_data):
+    # SRP
+    spec = sim_data["spec_srp"]
+    diffuse = sim_data["diffuse_srp"]
+    # DRAG
+    v_inf = sim_data["v_inf"]
+    alt_km = sim_data["alt_km"]
+    time_str = sim_data["time_str"]
+    sigma_N = sim_data["sigma_N"]
+    sigma_T = sim_data["sigma_T"]
+    # T_inf   = sim_data["T_inf"]
+    T_wall = sim_data["T_wall"]
+
+    hits = res_prop['hit_points']  # (N,3), m
+    ray_dir = res_prop['r_source']
+    cos_th = res_prop['cos_th']  # cos(θ) where θ is angle between ray and normal
+    normal_cell = res_prop['cell_normal']  # (N,3)
+    # A_fem = res_prop['A_fem']
+    Area_r = res_prop['area_proj']
+
+    # '2014-07-22 22:18:45'  # time(UTC)
+    T_inf, rho, m_particle, r_specific = get_atmospheric_condition(time_str, alt_km)
+
+    P_SRP = 4.56e-6
+    q_inf = 0.5 * rho * v_inf ** 2
+
+    cn, ct = compute_coefficients_schaaf(cos_th, v_inf, sigma_N, sigma_T, T_inf, T_wall, m_particle)
+
+    F_drag_total, T_drag_total, F_d, T_d = compute_fmf_drag_model(q_inf, ray_dir, normal_cell,
+                                                                  hits, Area_r, cn, ct)
+
+    F_srp_total, T_srp_total, F_s, T_s = compute_srp_lambert_model(res_prop,
+                                                                   ray_dir,
+                                                                   np.zeros(3),
+                                                                   diffuse,
+                                                                   spec,
+                                                                   P_SRP)
+
+    return F_drag_total, T_drag_total, F_srp_total, T_srp_total
+
 
 
 

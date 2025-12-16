@@ -37,5 +37,38 @@ def compute_srp_lambert_model(res_prop, r_inout, com_m, diffuse, spec, p_srp=4.5
 def compute_spherical_srp_model(r_inout, cr, a_proj_2d_sphere, p_srp=4.56e-6):
     return p_srp * a_proj_2d_sphere * r_inout * cr
 
+
+def spherical_srp_force(sun_direction_body, sim_data, A_ref):
+    """
+    Compute SRP force using spherical model
+
+    Parameters:
+    -----------
+    sun_direction_body : np.ndarray (3,)
+        Sun direction unit vector in body frame
+    sim_data : dict
+        Simulation parameters
+    A_ref : float
+        Reference area [m^2]
+
+    Returns:
+    --------
+    F_srp : np.ndarray (3,)
+        SRP force [N]
+    """
+    P_SRP = 4.56e-6  # N/m^2
+
+    # Reflection coefficients
+    spec = sim_data['spec_srp']
+    diffuse = sim_data['diffuse_srp']
+
+    # Radiation pressure coefficient
+    Cr = 1 + spec + 2 * diffuse / 3
+
+    # SRP force
+    F_srp = P_SRP * A_ref * Cr * sun_direction_body
+
+    return F_srp
+
 if __name__ == '__main__':
     pass

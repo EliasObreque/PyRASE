@@ -110,6 +110,57 @@ def compute_sphere_drag_model(q_vel, v_vec, a_proj_2d_sphere):
     return q_vel * v_vec * a_proj_2d_sphere
 
 
+def spherical_drag_force(velocity_body, sim_data, A_ref, mass):
+    """
+    Compute drag force using spherical model
+
+    Parameters:
+    -----------
+    velocity_body : np.ndarray (3,)
+        Velocity in body frame [m/s]
+    sim_data : dict
+        Simulation parameters
+    A_ref : float
+        Reference area [m^2]
+    mass : float
+        Spacecraft mass [kg]
+
+    Returns:
+    --------
+    F_drag : np.ndarray (3,)
+        Drag force [N]
+    """
+    v_mag = np.linalg.norm(velocity_body)
+    if v_mag < 1e-6:
+        return np.zeros(3)
+
+    v_unit = velocity_body / v_mag
+
+    # Get atmospheric properties
+    alt_km = sim_data['alt_km']
+    time_str = sim_data['time_str']
+    T_inf, rho, m_particle, r_specific = get_atmospheric_condition(time_str, alt_km)
+
+    # Dynamic pressure
+    q_inf = 0.5 * rho * v_mag ** 2
+
+    # Speed ratio
+    vm = np.sqrt(2.0 * 1.3806488e-23 * T_inf / m_particle)
+    s = v_mag / vm
+
+    # Drag coefficient from CLL model
+    sigma_N = sim_data['sigma_N']
+    sigma_T = sim_data['sigma_T']
+    T_wall = sim_data['T_wall']
+    T_ratio = T_wall / T_inf
+
+    Cd = get_sphere_drag_coefficient(s, T_ratio, sigma_N, sigma_T)
+
+    # Drag force (opposite to velocity)
+    F_drag = -q_inf * Cd * A_ref * v_unit
+
+    return F_drag
+
 def compute_analytical_prism_coefficients(lx, ly, lz, v_body, sigma_n, sigma_t,
                                           temp_inf, temp_wall, m_particle,
                                           A_ref=None):
