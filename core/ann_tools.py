@@ -30,6 +30,7 @@ print(f"Using device: {DEVICE}")
 
 # Define columns
 COL_IN = ['r_x', 'r_y', 'r_z']
+# COL_IN += ['r_xy', 'r_xz', 'r_yz']
 COL_OUT_DRAG_F = ['Fx_drag', 'Fy_drag', 'Fz_drag']
 COL_OUT_DRAG_T = ['Tx_drag', 'Ty_drag', 'Tz_drag']
 COL_OUT_DRAG = COL_OUT_DRAG_F + COL_OUT_DRAG_T
@@ -53,7 +54,10 @@ def prepare_dataframe(data_mesh):
         'r_x': r_array[:, 0],
         'r_y': r_array[:, 1],
         'r_z': r_array[:, 2],
-        
+        'r_xy': r_array[:, 0] * r_array[:, 1],
+        'r_xz': r_array[:, 0] * r_array[:, 2],
+        'r_yz': r_array[:, 1] * r_array[:, 2],
+
         # Outputs: Drag forces and torques
         'Fx_drag': F_drag_array[:, 0],
         'Fy_drag': F_drag_array[:, 1],
@@ -205,7 +209,7 @@ def quantile_scale_outputs(train_df, val_df, test_df, col_out):
 
 
 def prepare_data_for_training(data_mesh, output_type='drag', batch_size=32, seed=42, 
-                               normalization='minmax'):
+                               normalization='minmax', threshold=None):
     """
     Complete pipeline with choice of normalization
     
@@ -240,7 +244,31 @@ def prepare_data_for_training(data_mesh, output_type='drag', batch_size=32, seed
     # 4. Split FIRST
     train_df, tmp = train_test_split(df, test_size=0.30, random_state=seed)
     val_df, test_df = train_test_split(tmp, test_size=0.5, random_state=seed)
-    
+
+    if threshold is not None:
+        # Get original size
+        original_train_size = len(train_df)
+
+        # Get all columns to check (inputs + outputs)
+        all_cols = COL_IN + col_out
+
+        # Create mask: keep samples where ALL absolute values are >= threshold
+        mask = (train_df[all_cols].abs() >= threshold).all(axis=1)
+
+        # Filter training set
+        train_df = train_df[mask].reset_index(drop=True)
+
+        # Report filtering results
+        removed = original_train_size - len(train_df)
+        print(f"\n=== Threshold Filtering (training set only) ===")
+        print(f"Threshold: {threshold}")
+        print(f"Original training samples: {original_train_size}")
+        print(f"Samples removed: {removed} ({100 * removed / original_train_size:.1f}%)")
+        print(f"Remaining training samples: {len(train_df)}")
+        print(f"Validation samples (unchanged): {len(val_df)}")
+        print(f"Test samples (unchanged): {len(test_df)}")
+        print("=" * 50)
+
     # 5. Normalize using training stats only
     if normalization == 'minmax':
         train_df, val_df, test_df, scaler = minmax_scale_outputs(
@@ -367,7 +395,7 @@ def run_train_batch(model, train_loader, val_loader, epochs, lr, weight_decay=0.
     Enhanced training function with batch processing and monitoring
     """
     model.to(device)
-    crit = nn.MSELoss()
+    crit = nn.L1Loss()
     opt = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     
     # For tracking

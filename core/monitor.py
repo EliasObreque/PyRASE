@@ -887,7 +887,7 @@ def plot_sphere_distribution(mesh, data_mesh, columns_data, filename, show=False
         )
 
 
-def plot_predictions_by_axis(P_real, Y_real, title_prefix=""):
+def plot_predictions_by_axis(P_real, Y_real, force, torque, title_prefix=""):
     """
     Create separate plots for forces and torques.
     Forces: 3 rows (Fx, Fy, Fz)
@@ -899,68 +899,74 @@ def plot_predictions_by_axis(P_real, Y_real, title_prefix=""):
         title_prefix: Prefix for plot titles
     """
     # Output is: [Fx, Fy, Fz, Tx, Ty, Tz]
-    force_indices = [0, 1, 2]   # Fx, Fy, Fz
-    torque_indices = [3, 4, 5]  # Tx, Ty, Tz
-    
+    _indices = [0, 1, 2]   # Fx, Fy, Fz
+
     axis_labels = ['x', 'y', 'z']
-    
+    fig1, fig2 = None, None
     # ==================== FORCES PLOT ====================
-    fig1, axes1 = plt.subplots(1, 3, figsize=(12, 5))
-    fig1.suptitle(f'{title_prefix} - Force Predictions vs Ground Truth (PyRase)', fontweight='bold')
-    
-    for i, (idx, label) in enumerate(zip(force_indices, axis_labels)):
-        ax = axes1[i]
-        
-        # Scatter plot: Predicted vs Actual
-        ax.scatter(Y_real[:, idx], P_real[:, idx], alpha=0.5, s=20, label='Predictions')
-        
-        # Perfect prediction line
-        min_val = min(Y_real[:, idx].min(), P_real[:, idx].min())
-        max_val = max(Y_real[:, idx].max(), P_real[:, idx].max())
-        ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Perfect Prediction')
-        
-        # Calculate metrics
-        mae = np.mean(np.abs(P_real[:, idx] - Y_real[:, idx]))
-        rmse = np.sqrt(np.mean((P_real[:, idx] - Y_real[:, idx])**2))
-        r2 = 1 - np.sum((Y_real[:, idx] - P_real[:, idx])**2) / np.sum((Y_real[:, idx] - Y_real[:, idx].mean())**2)
-        
-        ax.set_xlabel(f'PyRase {label}-axis (mN)')
-        ax.set_ylabel(f'Predicted F{label} (mN)')
-        ax.set_title(f'MAE: {mae:.3f} mN \n RMSE: {rmse:.3f} mN |R²: {r2:.3f}')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        ax.set_aspect('equal', adjustable='box')
-    
-    plt.tight_layout()
-    
-    # ==================== TORQUES PLOT ====================
-    fig2, axes2 = plt.subplots(1, 3, figsize=(12, 5))
-    fig2.suptitle(f'{title_prefix} - Torque Predictions vs Ground Truth (PyRase)', fontweight='bold')
-    
-    for i, (idx, label) in enumerate(zip(torque_indices, axis_labels)):
-        ax = axes2[i]
-        
-        # Scatter plot: Predicted vs Actual
-        ax.scatter(Y_real[:, idx], P_real[:, idx], alpha=0.5, s=20, color='orange', label='Predictions')
-        
-        # Perfect prediction line
-        min_val = min(Y_real[:, idx].min(), P_real[:, idx].min())
-        max_val = max(Y_real[:, idx].max(), P_real[:, idx].max())
-        ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Perfect Prediction')
-        
-        # Calculate metrics
-        mae = np.mean(np.abs(P_real[:, idx] - Y_real[:, idx]))
-        rmse = np.sqrt(np.mean((P_real[:, idx] - Y_real[:, idx])**2))
-        r2 = 1 - np.sum((Y_real[:, idx] - P_real[:, idx])**2) / np.sum((Y_real[:, idx] - Y_real[:, idx].mean())**2)
-        
-        ax.set_xlabel(f'PyRase {label}-axis (mNm)')
-        ax.set_ylabel(f'Predicted T{label} (mNm)')
-        ax.set_title(f'MAE: {mae:.3f} mNm \n RMSE: {rmse:.3f} mNm | R²: {r2:.3f}')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        ax.set_aspect('equal', adjustable='box')
-    
-    plt.tight_layout()
+    if force and not torque:
+        fig1, axes1 = plt.subplots(1, 3, figsize=(12, 5))
+        fig1.suptitle(f'{title_prefix} - Force Predictions vs Ground Truth (PyRase)', fontweight='bold')
+
+        for i, (idx, label) in enumerate(zip(_indices, axis_labels)):
+            ax = axes1[i]
+
+            # Scatter plot: Predicted vs Actual
+            ax.scatter(Y_real[:, idx], P_real[:, idx], alpha=0.5, s=20, label='Predictions')
+
+            # Perfect prediction line
+            min_val = min(Y_real[:, idx].min(), P_real[:, idx].min())
+            max_val = max(Y_real[:, idx].max(), P_real[:, idx].max())
+            ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Perfect Prediction')
+
+            # Calculate metrics
+            mae = np.mean(np.abs(P_real[:, idx] - Y_real[:, idx]))
+            rmse = np.sqrt(np.mean((P_real[:, idx] - Y_real[:, idx])**2))
+            r2 = 1 - np.sum((Y_real[:, idx] - P_real[:, idx])**2) / np.sum((Y_real[:, idx] - Y_real[:, idx].mean())**2)
+
+            unit_text = r"$m^2$"
+            ax.set_xlabel(f'PyRase {label}-axis ({unit_text})')
+            symb_ = r"$\tilde{\mathbf{F}}$" + fr"$_{label}$"
+            ax.set_ylabel(f'Predicted {symb_} ({unit_text})')
+            ax.set_title(f'MAE: {mae:.3f} {unit_text} \n RMSE: {rmse:.3f} {unit_text} |R²: {r2:.3f}')
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            ax.set_aspect('equal', adjustable='box')
+
+        plt.tight_layout()
+
+    if torque and not force:
+        # ==================== TORQUES PLOT ====================
+        fig2, axes2 = plt.subplots(1, 3, figsize=(12, 5))
+        fig2.suptitle(f'{title_prefix} - Torque Predictions vs Ground Truth (PyRase)', fontweight='bold')
+
+        for i, (idx, label) in enumerate(zip(_indices, axis_labels)):
+            ax = axes2[i]
+
+            # Scatter plot: Predicted vs Actual
+            ax.scatter(Y_real[:, idx], P_real[:, idx], alpha=0.5, s=20, color='orange', label='Predictions')
+
+            # Perfect prediction line
+            min_val = min(Y_real[:, idx].min(), P_real[:, idx].min())
+            max_val = max(Y_real[:, idx].max(), P_real[:, idx].max())
+            ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Perfect Prediction')
+
+            # Calculate metrics
+            mae = np.mean(np.abs(P_real[:, idx] - Y_real[:, idx]))
+            rmse = np.sqrt(np.mean((P_real[:, idx] - Y_real[:, idx])**2))
+            r2 = 1 - np.sum((Y_real[:, idx] - P_real[:, idx])**2) / np.sum((Y_real[:, idx] - Y_real[:, idx].mean())**2)
+
+            unit_text = r"$m^3$"
+            ax.set_xlabel(f'PyRase {label}-axis ({unit_text})')
+            symb_ = r"$\tilde{\boldsymbol{\tau}}$" + fr"$_{label}$"
+            ax.set_ylabel(f'Predicted {symb_} ({unit_text})')
+            ax.set_title(f'MAE: {mae:.3f} {unit_text} \n RMSE: {rmse:.3f} {unit_text} |R²: {r2:.3f}')
+
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            ax.set_aspect('equal', adjustable='box')
+
+        plt.tight_layout()
     
     return fig1, fig2
 
