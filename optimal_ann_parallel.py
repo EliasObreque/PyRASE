@@ -75,12 +75,12 @@ BATCH_LIST = [64, 128]
 SEEDS = [0, 1]
 
 # Training parameters
-EPOCHS = 100
-PATIENCE = 10
+EPOCHS = 10
+PATIENCE = 2
 WEIGHT_DECAY = 1e-4
 
 # Parallelization settings
-N_WORKERS = max(1, cpu_count() - 1)
+N_WORKERS = max(1, cpu_count() - 6)
 print(f"Available CPUs: {cpu_count()}, Using: {N_WORKERS} workers")
 
 # Device
@@ -233,23 +233,12 @@ def save_training_curves(train_losses, val_losses, save_path):
     plt.close()
 
 
-def evaluate_and_save_predictions(model, test_loader, scaler, config_dir, model_type):
+def evaluate_and_save_predictions(model, tX, tY, scaler, config_dir, model_type):
     """Evaluate model and save prediction plots (UNCHANGED FROM ORIGINAL)"""
 
     model.eval()
 
-    # Get all test data
-    all_X = []
-    all_Y = []
-
-    for batch_X, batch_Y in test_loader:
-        all_X.append(batch_X.numpy())
-        all_Y.append(batch_Y.numpy())
-
-    tX = np.vstack(all_X)
-    tY = np.vstack(all_Y)
-
-    # Get predictions (this function handles unscaling internally)
+    # Get predictions - tX and tY are already tensors
     # get_predictions_unscaled(model, X, Y, scaler, normalization='quantile', device=DEVICE)
     P_test, Y_test, X_test = get_predictions_unscaled(model, tX, tY, scaler, normalization='minmax', device=DEVICE)
 
@@ -353,7 +342,7 @@ def train_single_config(config_dict, config_id, seed_idx, seed):
         device=DEVICE
     )
 
-    return model, val_loss, train_losses, val_losses, test_loader, scaler
+    return model, val_loss, train_losses, val_losses, tX, tY, scaler
 
 
 # ==========================
@@ -391,7 +380,7 @@ def process_single_configuration(args):
         best_seed_loss = float('inf')
 
         for seed_idx, seed in enumerate(SEEDS):
-            model, val_loss, train_losses, val_losses, test_loader, scaler = \
+            model, val_loss, train_losses, val_losses, tX, tY, scaler = \
                 train_single_config(config_dict, config_id, seed_idx, seed)
 
             seed_losses.append(val_loss)
@@ -402,7 +391,8 @@ def process_single_configuration(args):
                 best_seed_idx = seed_idx
                 best_model = model
                 best_scaler = scaler
-                best_test_loader = test_loader
+                best_tX = tX
+                best_tY = tY
                 best_train_losses = train_losses
                 best_val_losses = val_losses
 
@@ -411,7 +401,7 @@ def process_single_configuration(args):
         save_training_curves(best_train_losses, best_val_losses, curves_path)
 
         test_metrics = evaluate_and_save_predictions(
-            best_model, best_test_loader, best_scaler,
+            best_model, best_tX, best_tY, best_scaler,
             config_dir, MODEL_DRAG
         )
 
@@ -508,15 +498,13 @@ def run_comprehensive_search_parallel():
 
     # Generate all configurations
     configs_to_run = []
-    config_id = 0
+    config_id = 1  # Start from 1
 
     for act in ACT_LIST:
         for layers in LAYERS_LIST:
             for hidden in HIDDEN_LIST:
                 for lr in LR_LIST:
                     for batch in BATCH_LIST:
-                        config_id += 1
-
                         # Calculate parameters
                         in_dim = 3
                         out_dim = 3
@@ -525,6 +513,7 @@ def run_comprehensive_search_parallel():
                                  (hidden * out_dim + out_dim)
 
                         configs_to_run.append((config_id, act, layers, hidden, lr, batch, params))
+                        config_id += 1
 
     total_configs = len(configs_to_run)
     print(f"\nTotal unique configurations: {total_configs}")
@@ -572,7 +561,7 @@ def create_comparison_plots(results_df, out_dir):
     print("=" * 70)
 
     # 1. Config ID vs Loss
-    plt.figure(figsize=(14, 6))
+    plt.figure(figsize=(8, 6))
     x = results_df['config_id'].values
     y_mean = results_df['val_loss_mean'].values
     y_std = results_df['val_loss_std'].values
@@ -588,9 +577,9 @@ def create_comparison_plots(results_df, out_dir):
 
     plt.xlabel('Configuration ID')
     plt.ylabel('Validation Loss (mean ± std)')
-    plt.title('All Configurations Performance', fontweight='bold')
+    plt.title('Configuration Performance Comparison', fontweight='bold')
     plt.grid(True, alpha=0.3)
-    plt.legend(fontsize=11)
+    plt.legend()
     plt.tight_layout()
 
     plot1_path = os.path.join(out_dir, 'all_configs_comparison.png')
@@ -599,7 +588,7 @@ def create_comparison_plots(results_df, out_dir):
     print(f"Saved: {plot1_path}")
 
     # 2. N_layers vs Loss
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(8, 6))
 
     for act in results_df['activation'].unique():
         subset = results_df[results_df['activation'] == act]
@@ -609,7 +598,7 @@ def create_comparison_plots(results_df, out_dir):
 
     plt.xlabel('Number of Layers')
     plt.ylabel('Validation Loss (mean ± std)')
-    plt.title('Effect of Network Depth', fontweight='bold')
+    plt.title('Network Depth vs Performance', fontweight='bold')
     plt.legend(title='Activation')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -620,7 +609,7 @@ def create_comparison_plots(results_df, out_dir):
     print(f"Saved: {plot2_path}")
 
     # 3. N_neurons vs Loss
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(8, 6))
 
     for act in results_df['activation'].unique():
         subset = results_df[results_df['activation'] == act]
@@ -630,7 +619,7 @@ def create_comparison_plots(results_df, out_dir):
 
     plt.xlabel('Number of Neurons per Layer')
     plt.ylabel('Validation Loss (mean ± std)')
-    plt.title('Effect of Network Width', fontweight='bold')
+    plt.title('Network Width vs Performance', fontweight='bold')
     plt.legend(title='Activation')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -641,7 +630,7 @@ def create_comparison_plots(results_df, out_dir):
     print(f"Saved: {plot3_path}")
 
     # 4. Parameters vs Loss (Pareto plot)
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(8, 6))
 
     for act in results_df['activation'].unique():
         subset = results_df[results_df['activation'] == act]
@@ -661,7 +650,7 @@ def create_comparison_plots(results_df, out_dir):
     print(f"Saved: {plot4_path}")
 
     # 5. Learning rate effect
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(8, 6))
 
     for act in results_df['activation'].unique():
         subset = results_df[results_df['activation'] == act]
@@ -671,7 +660,7 @@ def create_comparison_plots(results_df, out_dir):
 
     plt.xlabel('Learning Rate')
     plt.ylabel('Validation Loss (mean ± std)')
-    plt.title('Effect of Learning Rate', fontweight='bold')
+    plt.title('Learning Rate vs Performance', fontweight='bold')
     plt.xscale('log')
     plt.legend(title='Activation')
     plt.grid(True, alpha=0.3)
@@ -761,10 +750,8 @@ if __name__ == "__main__":
     print(f"Total configurations tested: {len(results_df)}")
     print(f"Best config ID: {int(best_config['config_id'])}")
     print(f"Total elapsed time: {elapsed_time / 60:.2f} minutes")
-    print(f"Estimated speedup: ~{N_WORKERS}x faster than sequential")
+    print(f"Parallel workers used: {N_WORKERS}")
     print(f"\nAll results: {csv_path}")
     print(f"Best config folder: {OUT_DIR}/config_{int(best_config['config_id'])}/")
     print(f"Comparison plots: {OUT_DIR}/*.png")
-    print("=" * 70)
-    print("\n✓ All tasks completed successfully!")
     print("=" * 70)
