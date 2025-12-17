@@ -368,7 +368,7 @@ def plot_orbit_comparison(results_dict, t_eval, save_path='orbit_comparison.png'
     save_path : str
         Output file path
     """
-    fig = plt.figure(figsize=(16, 12))
+    fig = plt.figure(figsize=(10, 8))
 
     # 3D orbit plot
     ax1 = fig.add_subplot(2, 2, 1, projection='3d')
@@ -380,9 +380,9 @@ def plot_orbit_comparison(results_dict, t_eval, save_path='orbit_comparison.png'
     }
 
     labels = {
-        'ground_truth': 'Ground Truth (Ray Tracing)',
-        'spherical': 'Spherical Model',
-        'ann': 'ANN Model'
+        'ground_truth': 'PyRace',
+        'spherical': 'CB',
+        'ann': 'ANN'
     }
 
     for model_name, sol in results_dict.items():
@@ -422,7 +422,7 @@ def plot_orbit_comparison(results_dict, t_eval, save_path='orbit_comparison.png'
                      linewidth=2)
 
     ax2.set_xlabel('Time [hours]')
-    ax2.set_ylabel('Position Error [km]')
+    ax2.set_ylabel('Error [km]')
     ax2.set_title('Position Error vs Time')
     ax2.legend()
     ax2.grid(True, alpha=0.3)
@@ -443,7 +443,7 @@ def plot_orbit_comparison(results_dict, t_eval, save_path='orbit_comparison.png'
                      linewidth=2)
 
     ax3.set_xlabel('Time [hours]')
-    ax3.set_ylabel('Velocity Error [m/s]')
+    ax3.set_ylabel('Error [m/s]')
     ax3.set_title('Velocity Error vs Time')
     ax3.legend()
     ax3.grid(True, alpha=0.3)
@@ -465,7 +465,7 @@ def plot_orbit_comparison(results_dict, t_eval, save_path='orbit_comparison.png'
                          linewidth=1.5, alpha=0.7)
 
     ax4.set_xlabel('Time [hours]')
-    ax4.set_ylabel('Position Error Components [km]')
+    ax4.set_ylabel('Error [km]')
     ax4.set_title('Position Error Components')
     ax4.legend(fontsize=10, ncol=2)
     ax4.grid(True, alpha=0.3)
@@ -481,7 +481,7 @@ def plot_error_statistics(results_dict, t_eval, save_path='error_statistics.png'
     """
     Plot detailed error statistics
     """
-    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    fig, axes = plt.subplots(2, 3, figsize=(8, 6))
 
     r_true = results_dict['ground_truth'].sol(t_eval)[:3, :].T
     v_true = results_dict['ground_truth'].sol(t_eval)[3:, :].T

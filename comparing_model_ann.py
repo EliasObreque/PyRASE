@@ -111,7 +111,7 @@ def example_basic_comparison():
 
     # Propagation time (1 orbit)
     orbital_period = 2 * np.pi * np.sqrt(a ** 3 / MU_EARTH)
-    t_span = (0, 10 * orbital_period)
+    t_span = (0, 0.5 * orbital_period)
     t_eval = np.linspace(0, t_span[1], 2000)
 
     print(f"\nInitial orbit:")

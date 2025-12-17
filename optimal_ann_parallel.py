@@ -238,23 +238,20 @@ def evaluate_and_save_predictions(model, test_loader, scaler, config_dir, model_
 
     model.eval()
 
-    # Get predictions
-    all_predictions = []
-    all_targets = []
+    # Get all test data
+    all_X = []
+    all_Y = []
 
-    with torch.no_grad():
-        for batch_X, batch_Y in test_loader:
-            batch_X = batch_X.to(DEVICE)
-            predictions = model(batch_X).cpu().numpy()
-            all_predictions.append(predictions)
-            all_targets.append(batch_Y.numpy())
+    for batch_X, batch_Y in test_loader:
+        all_X.append(batch_X.numpy())
+        all_Y.append(batch_Y.numpy())
 
-    P_test_scaled = np.vstack(all_predictions)
-    Y_test_scaled = np.vstack(all_targets)
+    tX = np.vstack(all_X)
+    tY = np.vstack(all_Y)
 
-    # Unscale
-    P_test = get_predictions_unscaled(P_test_scaled, scaler, model_type)
-    Y_test = get_predictions_unscaled(Y_test_scaled, scaler, model_type)
+    # Get predictions (this function handles unscaling internally)
+    # get_predictions_unscaled(model, X, Y, scaler, normalization='quantile', device=DEVICE)
+    P_test, Y_test, X_test = get_predictions_unscaled(model, tX, tY, scaler, normalization='minmax', device=DEVICE)
 
     # Output names
     if 'f' in model_type:
