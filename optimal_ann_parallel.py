@@ -67,20 +67,20 @@ THRESHOLD_VALUE = None
 # HYPERPARAMETER GRID
 # ==========================
 
-LAYERS_LIST = [3, 4]
-HIDDEN_LIST = [4, 6]
+LAYERS_LIST = [3, 4, 5, 6, 7, 8]
+HIDDEN_LIST = [3, 4, 5, 6, 7, 8]
 ACT_LIST = ["relu", "tanh"]
 LR_LIST = [1e-2, 1e-3]
 BATCH_LIST = [64, 128]
-SEEDS = [0, 1]
+SEEDS = [0, 1, 2]
 
 # Training parameters
-EPOCHS = 10
-PATIENCE = 2
+EPOCHS = 5000
+PATIENCE = 100
 WEIGHT_DECAY = 1e-4
 
 # Parallelization settings
-N_WORKERS = max(1, cpu_count() - 6)
+N_WORKERS = max(1, cpu_count() - 1)
 print(f"Available CPUs: {cpu_count()}, Using: {N_WORKERS} workers")
 
 # Device
