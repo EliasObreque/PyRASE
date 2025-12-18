@@ -10,10 +10,12 @@ import numpy as np
 from scipy.special import erf
 from pyatmos import read_sw_nrlmsise00, nrlmsise00
 
-swdata = read_sw_nrlmsise00('./core/sw_data/SW-All.csv')
+FILE_PATH = os.path.dirname(os.path.realpath(__file__))
+sw_file = os.path.join(FILE_PATH, './sw_data/SW-All.csv')
+swdata = read_sw_nrlmsise00(sw_file)
 
 # === Physical parameters (SI) ===
-kB     = 1.3806488e-23 # J/K
+kB = 1.3806488e-23 # J/K
 NA = 6.02214076e23  # 1/mol            # kg/mol
 # Gas properties (atomic oxygen dominant at 200 km)
 
@@ -160,6 +162,11 @@ def spherical_drag_force(velocity_body, sim_data, A_ref, mass):
     F_drag = -q_inf * Cd * A_ref * v_unit
 
     return F_drag
+
+def get_dynamic_pressure(velocity_body, alt_km, time_str):
+    T_inf, rho, m_particle, r_specific = get_atmospheric_condition(time_str, alt_km)
+    v_mag = np.linalg.norm(velocity_body)
+    return 0.5 * rho * v_mag ** 2
 
 def compute_analytical_prism_coefficients(lx, ly, lz, v_body, sigma_n, sigma_t,
                                           temp_inf, temp_wall, m_particle,

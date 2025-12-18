@@ -4,6 +4,7 @@ Created on Thu Oct 23 12:11:34 2025
 
 @author: mndc5
 """
+import pickle
 
 import pandas as pd
 import torch
@@ -318,7 +319,7 @@ def prepare_data_for_training(data_mesh, output_type='drag', batch_size=32, seed
 # Model / train / eval
 # ==========================
 class MLP(nn.Module):
-    def __init__(self, in_dim=3, out_dim=12, hidden=16, layers=2, activation="relu"):
+    def __init__(self, in_dim=3, out_dim=3, hidden=16, layers=2, activation="relu"):
         super().__init__()
         acts = {"relu": nn.ReLU, "tanh": nn.Tanh, "gelu": nn.GELU, "sigmoid": nn.Sigmoid}
         Act = acts[activation]
@@ -553,3 +554,241 @@ def get_predictions_unscaled(model, X, Y, scaler, normalization='quantile', devi
         Y_real = scaler.inverse_transform(Y_np)
         
         return P_real, Y_real, X_np
+
+
+def load_ann_models(model_paths, device='cpu'):
+    """
+    Load multiple ANN models for different force/torque components
+
+    Parameters:
+    -----------
+    model_paths : dict
+        Dictionary with keys: 'drag_f', 'drag_t', 'srp_f', 'srp_t'
+        Each value is the path to the corresponding model pickle file
+    device : str
+        'cpu' or 'cuda'
+
+    Returns:
+    --------
+    models : dict
+        Dictionary containing loaded models and scalers:
+        {
+            'drag_f': {'model': model, 'scaler': scaler},
+            'drag_t': {'model': model, 'scaler': scaler},
+            'srp_f': {'model': model, 'scaler': scaler},
+            'srp_t': {'model': model, 'scaler': scaler}
+        }
+
+    Example:
+    --------
+    model_paths = {
+        'drag_f': 'path/to/model_drag_f.pkl',
+        'drag_t': 'path/to/model_drag_t.pkl',
+        'srp_f': 'path/to/model_srp_f.pkl',
+        'srp_t': 'path/to/model_srp_t.pkl'
+    }
+    models = load_ann_models(model_paths)
+    """
+    models = {}
+
+    for model_type, path in model_paths.items():
+        if path is None:
+            models[model_type] = None
+            continue
+
+        try:
+            with open(path, 'rb') as f:
+                checkpoint = pickle.load(f)
+
+            # Check if this is a checkpoint format (with model_state_dict)
+            if 'model_state_dict' in checkpoint and 'model_architecture' in checkpoint:
+                # Checkpoint format
+                arch = checkpoint['model_architecture']
+                activation = arch['activation']
+                hidden = arch['hidden']
+                layers = arch['layers']
+
+                model = MLP(in_dim=3, out_dim=3, hidden=layers, activation=activation)
+                model.load_state_dict(checkpoint['model_state_dict'])
+                scaler = checkpoint['scaler']
+
+                print(f"  Loaded {model_type}: {path}")
+                print(f"    Architecture: {layers} layers × {hidden} neurons, activation={activation}")
+            else:
+                # Old format (direct model object)
+                model = checkpoint['model']
+                scaler = checkpoint['scaler']
+                print(f"  Loaded {model_type}: {path}")
+
+            model.to(device)
+            model.eval()
+
+            models[model_type] = {
+                'model': model,
+                'scaler': scaler
+            }
+
+        except Exception as e:
+            print(f"  Warning: Could not load {model_type} from {path}")
+            print(f"    Error: {e}")
+            models[model_type] = None
+
+    return models
+
+
+def load_ann_model(model_path, device='cpu'):
+    """
+    Load single ANN model from checkpoint
+
+    Parameters:
+    -----------
+    model_path : str
+        Path to model pickle file
+    device : str
+        'cpu' or 'cuda'
+
+    Returns:
+    --------
+    model : torch.nn.Module
+        Loaded model
+    scaler : MinMaxScaler
+        Input normalization scaler
+    """
+    with open(model_path, 'rb') as f:
+        checkpoint = pickle.load(f)
+
+    # Check if this is a checkpoint format
+    if 'model_state_dict' in checkpoint and 'model_architecture' in checkpoint:
+        # Checkpoint format
+        arch = checkpoint['model_architecture']
+        activation = arch['activation']
+        hidden = arch['hidden']
+        layers = arch['layers']
+
+        model = MLP(in_dim=3, out_dim=3, hidden=hidden, layers=layers, activation=activation)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        scaler = checkpoint['scaler']
+    else:
+        # Old format
+        model = checkpoint['model']
+        scaler = checkpoint['scaler']
+
+    model.to(device)
+    model.eval()
+    return     {
+        'model': model,
+        'scaler': scaler
+    }
+
+
+def ann_predict_force(input_body, model_dict, device='cpu'):
+    """
+    Predict force using ANN model
+
+    Parameters:
+    -----------
+    input_body : np.ndarray (3,)
+        Input vector in body frame
+    model_dict : dict
+        Dictionary with 'model' and 'scaler' keys
+    device : str
+        'cpu' or 'cuda'
+
+    Returns:
+    --------
+    F_pred : np.ndarray (3,)
+        Predicted force [N]
+    """
+    if model_dict is None:
+        return np.zeros(3)
+
+    model = model_dict['model']
+    scaler = model_dict['scaler']
+
+    # Input: velocity (no normalization on input)
+    input_body /= np.linalg.norm(input_body)
+    v_tensor = torch.tensor(input_body.reshape(1, -1), dtype=torch.float32).to(device)
+
+    # Predict (output is normalized)
+    with torch.no_grad():
+        F_pred_norm = model(v_tensor).cpu().numpy()
+
+    # Unscale output
+    if scaler is not None:
+        F_pred = scaler.inverse_transform(F_pred_norm).flatten()
+    else:
+        F_pred = F_pred_norm.flatten()
+
+    return F_pred
+
+
+def ann_predict_torque(input_body, model_dict, device='cpu'):
+    """
+    Predict torque using ANN model
+
+    Parameters:
+    -----------
+    input_body : np.ndarray (3,)
+        Input vector in body frame
+    model_dict : dict
+        Dictionary with 'model' and 'scaler' keys
+    device : str
+        'cpu' or 'cuda'
+
+    Returns:
+    --------
+    T_pred : np.ndarray (3,)
+        Predicted torque [N⋅m]
+    """
+    if model_dict is None:
+        return np.zeros(3)
+
+    model = model_dict['model']
+    scaler = model_dict['scaler']
+
+    # Input: velocity (no normalization on input)
+    input_body /= np.linalg.norm(input_body)
+    v_tensor = torch.tensor(input_body.reshape(1, -1), dtype=torch.float32).to(device)
+
+    # Predict (output is normalized)
+    with torch.no_grad():
+        T_pred_norm = model(v_tensor).cpu().numpy()
+
+    # Unscale output
+    if scaler is not None:
+        T_pred = scaler.inverse_transform(T_pred_norm).flatten()
+    else:
+        T_pred = T_pred_norm.flatten()
+
+    return T_pred
+
+
+def ann_predict(velocity_body, model, scaler, device='cpu'):
+    """
+    Predict force using ANN model (legacy single model support)
+
+    Parameters:
+    -----------
+    velocity_body : np.ndarray (3,)
+        Velocity vector in body frame [m/s]
+    model : torch.nn.Module
+        Trained neural network
+    scaler : MinMaxScaler
+        Input normalization scaler
+
+    Returns:
+    --------
+    F_pred : np.ndarray (3,)
+        Predicted force [N]
+    """
+    # Normalize input
+    v_normalized = scaler.transform(velocity_body.reshape(1, -1))
+
+    # Convert to tensor
+    v_tensor = torch.tensor(v_normalized, dtype=torch.float32).to(device)
+
+    # Predict
+    with torch.no_grad():
+        F_pred = model(v_tensor).cpu().numpy().flatten()
+
+    return F_pred

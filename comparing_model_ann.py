@@ -24,7 +24,7 @@ import pyvista as pv
 import pickle
 
 # Import comparison tools
-from core.orbit_propagation_comparison import (
+from core.orbit_propagation import (
     load_ann_model,
     propagate_orbit,
     plot_orbit_comparison,
@@ -35,8 +35,7 @@ from core.orbit_propagation_comparison import (
 )
 
 from core.selective_perturbation_comparison import (
-    compare_perturbation_scenarios,
-    plot_orbital_element_evolution
+    compare_perturbation_scenarios
 )
 
 print("Creating simple box mesh...")
@@ -47,8 +46,6 @@ MESH = MESH.subdivide(1, subfilter='linear').clean()
 # Spacecraft parameters
 mass = 10.0  # kg (3U CubeSat)
 A_ref = (3 + 2 + 1) / 3  # m^2 (3U CubeSat: 0.03 m^2)
-
-
 
 # ==========================
 # EXAMPLE 1: BASIC COMPARISON
@@ -74,11 +71,12 @@ def example_basic_comparison():
         print(f"Mesh loaded: {mesh_path}")
 
     # Load ANN model
-    model_path = "results/optimization/rect_prism_data_1000_sample_10000/config_58/model.pkl"
+    model_path = "results/optimization/rect_prism_data_1000_sample_10000/config_21/model_drag_f.pkl"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+    ann_models = {}
     try:
-        ann_model, ann_scaler = load_ann_model(model_path, device)
+        ann_model = load_ann_model(model_path, device)
+        ann_models['drag_f'] = ann_model
         print(f"ANN model loaded from: {model_path}")
     except:
         print(f"Warning: Could not load ANN model from {model_path}")
@@ -111,8 +109,8 @@ def example_basic_comparison():
 
     # Propagation time (1 orbit)
     orbital_period = 2 * np.pi * np.sqrt(a ** 3 / MU_EARTH)
-    t_span = (0, 0.5 * orbital_period)
-    t_eval = np.linspace(0, t_span[1], 2000)
+    t_span = (0, 15 * orbital_period)
+    t_eval = np.linspace(0, t_span[1], 200)
 
     print(f"\nInitial orbit:")
     print(f"  Altitude: {(a - R_EARTH) / 1000:.2f} km")
@@ -163,12 +161,12 @@ def example_basic_comparison():
     results['spherical'] = propagate_orbit(state0, t_span, params_sph)
 
     # 3. ANN Model (if available)
-    if ann_model is not None:
+    if ann_models is not None:
         print("Propagating ANN Model...")
         params_ann = {
             'model_type': 'ann',
-            'ann_model': ann_model,
-            'ann_scaler': ann_scaler,
+            'ann_models': ann_models,
+            'sim_data': sim_data,
             'mass': mass,
             'include_drag': True,
             'include_srp': True,
@@ -193,75 +191,6 @@ def example_basic_comparison():
 
     return results, t_eval
 
-
-# ==========================
-# EXAMPLE 2: SELECTIVE PERTURBATIONS
-# ==========================
-
-def example_selective_perturbations():
-    """
-    Compare different perturbation scenarios:
-    - J2 only
-    - J2 + Drag
-    - J2 + SRP
-    - J2 + Drag + SRP
-    """
-    print("\n" + "=" * 70)
-    print("EXAMPLE 2: SELECTIVE PERTURBATION COMPARISON")
-    print("=" * 70)
-
-    out_dir = "./results/example_selective/"
-    os.makedirs(out_dir, exist_ok=True)
-
-    # Setup (similar to Example 1)
-    mesh_path = "./mesh/spacecraft.stl"
-    mesh = MESH
-    if os.path.exists(mesh_path):
-        mesh = pv.read(mesh_path)
-
-    model_path = "./models/model.pkl"
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    try:
-        ann_model, ann_scaler = load_ann_model(model_path, device)
-    except:
-        print("Warning: ANN model not available")
-        return
-
-    # Initial state
-    a = R_EARTH + 400e3
-    state0 = np.array([a, 0, 0, 0, np.sqrt(MU_EARTH / a), 0])
-
-    # Propagation time (2 orbits)
-    orbital_period = 2 * np.pi * np.sqrt(a ** 3 / MU_EARTH)
-    t_span = (0, 2 * orbital_period)
-    t_eval = np.linspace(0, t_span[1], 500)
-
-    sim_data = {
-        'v_inf': np.sqrt(MU_EARTH / a),
-        'alt_km': 400,
-        'time_str': '2024-01-01 12:00:00',
-        'sigma_N': 0.9,
-        'sigma_T': 0.9,
-        'T_wall': 300,
-        'A_ref': A_ref,
-        'spec_srp': 0.1,
-        'diffuse_srp': 0.5
-    }
-
-    # Run selective comparison
-    print("\nRunning selective perturbation analysis...")
-    print("This will compare 4 scenarios × 3 models = 12 propagations")
-
-    results = compare_perturbation_scenarios(
-        state0, t_span, t_eval, mesh, sim_data,
-        ann_model, ann_scaler, mass, A_ref, out_dir
-    )
-
-    print(f"\nResults saved to: {out_dir}")
-    print("=" * 70)
-
-    return results
 
 
 # ==========================
@@ -468,10 +397,9 @@ if __name__ == "__main__":
     # Run examples
     print("\nSelect example to run:")
     print("  1. Basic comparison (default)")
-    print("  2. Selective perturbations")
-    print("  3. Custom configuration")
-    print("  4. Drag vs SRP comparison")
-    print("  5. Run all examples")
+    print("  2. Custom configuration")
+    print("  3. Drag vs SRP comparison")
+    print("  4. Run all examples")
 
     choice = input("\nEnter choice (1-5) or press Enter for example 1: ").strip()
 
@@ -479,15 +407,12 @@ if __name__ == "__main__":
         example_basic_comparison()
 
     elif choice == '2':
-        example_selective_perturbations()
-
-    elif choice == '3':
         example_custom_config()
 
-    elif choice == '4':
+    elif choice == '3':
         example_drag_vs_srp()
 
-    elif choice == '5':
+    elif choice == '4':
         print("\nRunning all examples...")
         example_basic_comparison()
         # example_selective_perturbations()  # Commented out - very time consuming

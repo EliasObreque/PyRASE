@@ -8,6 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 import matplotlib as mpl
+
+
 mpl.rcParams.update({
     "font.family": "serif",                     # generic family
     "font.serif": ["Times New Roman", "Times"], # try exact TNR first
@@ -22,6 +24,24 @@ mpl.rcParams.update({
     "mathtext.fontset": "stix",                 # STIX resembles Times
     "mathtext.rm": "Times New Roman",
 })
+
+# ==========================
+# ERROR ANALYSIS
+# ==========================
+R_EARTH = 6378137.0  # m
+def compute_position_error(r_true, r_test):
+    """Compute position error magnitude"""
+    return np.linalg.norm(r_true - r_test, axis=1)
+
+
+def compute_velocity_error(v_true, v_test):
+    """Compute velocity error magnitude"""
+    return np.linalg.norm(v_true - v_test, axis=1)
+
+
+def compute_relative_error(true, test):
+    """Compute relative error"""
+    return np.abs(true - test) / (np.abs(true) + 1e-10)
 
 
 def show_ray_tracing(mesh, prop: dict):
@@ -970,6 +990,259 @@ def plot_predictions_by_axis(P_real, Y_real, force, torque, title_prefix=""):
     
     return fig1, fig2
 
+
+def plot_orbit_comparison(results_dict, t_eval, save_path='orbit_comparison.png'):
+    """
+    Plot orbit comparison between models
+
+    Parameters:
+    -----------
+    results_dict : dict
+        {
+            'ground_truth': solution,
+            'spherical': solution,
+            'ann': solution
+        }
+    t_eval : np.ndarray
+        Time vector [s]
+    save_path : str
+        Output file path
+    """
+    # Figure 1: 3D orbit + error components (2x2 layout)
+    fig = plt.figure(figsize=(8, 7))
+
+    colors = {
+        'ground_truth': 'blue',
+        'spherical': 'red',
+        'ann': 'green'
+    }
+
+    labels = {
+        'ground_truth': 'Ground Truth (Ray Tracing)',
+        'spherical': 'Spherical Model',
+        'ann': 'ANN Model'
+    }
+
+    # 3D orbit plot
+    ax1 = fig.add_subplot(2, 2, 1, projection='3d')
+
+    for model_name, sol in results_dict.items():
+        r = sol.sol(t_eval)[:3, :].T / 1000  # Convert to km
+        ax1.plot(r[:, 0], r[:, 1], r[:, 2],
+                 color=colors[model_name],
+                 label=labels[model_name],
+                 linewidth=1.5, alpha=0.8)
+
+    # Earth sphere
+    u = np.linspace(0, 2 * np.pi, 50)
+    v = np.linspace(0, np.pi, 50)
+    x_earth = R_EARTH / 1000 * np.outer(np.cos(u), np.sin(v))
+    y_earth = R_EARTH / 1000 * np.outer(np.sin(u), np.sin(v))
+    z_earth = R_EARTH / 1000 * np.outer(np.ones(np.size(u)), np.cos(v))
+    ax1.plot_surface(x_earth, y_earth, z_earth, color='lightblue', alpha=0.3)
+
+    ax1.set_xlabel('X [km]', fontsize=10)
+    ax1.set_ylabel('Y [km]', fontsize=10)
+    ax1.set_zlabel('Z [km]', fontsize=10)
+    ax1.set_title('Orbit Trajectories', fontsize=11)
+    ax1.legend(fontsize=8)
+    ax1.grid(True, alpha=0.3)
+
+    # Position error vs time
+    ax2 = fig.add_subplot(2, 2, 2)
+
+    r_true = results_dict['ground_truth'].sol(t_eval)[:3, :].T
+
+    for model_name in ['spherical', 'ann']:
+        if model_name in results_dict:
+            r_test = results_dict[model_name].sol(t_eval)[:3, :].T
+            pos_error = compute_position_error(r_true, r_test)
+            ax2.plot(t_eval / 3600, pos_error / 1000,
+                     color=colors[model_name],
+                     label=labels[model_name],
+                     linewidth=1.5)
+
+    ax2.set_xlabel('Time [hours]', fontsize=10)
+    ax2.set_ylabel('Position Error [km]', fontsize=10)
+    ax2.set_title('Position Error vs Time', fontsize=11)
+    ax2.legend(fontsize=8)
+    ax2.grid(True, alpha=0.3)
+    ax2.set_yscale('log')
+    ax2.tick_params(labelsize=9)
+
+    # Velocity error vs time
+    ax3 = fig.add_subplot(2, 2, 3)
+
+    v_true = results_dict['ground_truth'].sol(t_eval)[3:, :].T
+
+    for model_name in ['spherical', 'ann']:
+        if model_name in results_dict:
+            v_test = results_dict[model_name].sol(t_eval)[3:, :].T
+            vel_error = compute_velocity_error(v_true, v_test)
+            ax3.plot(t_eval / 3600, vel_error,
+                     color=colors[model_name],
+                     label=labels[model_name],
+                     linewidth=1.5)
+
+    ax3.set_xlabel('Time [hours]', fontsize=10)
+    ax3.set_ylabel('Velocity Error [m/s]', fontsize=10)
+    ax3.set_title('Velocity Error vs Time', fontsize=11)
+    ax3.legend(fontsize=8)
+    ax3.grid(True, alpha=0.3)
+    ax3.set_yscale('log')
+    ax3.tick_params(labelsize=9)
+
+    # Error components
+    ax4 = fig.add_subplot(2, 2, 4)
+
+    for model_name in ['spherical', 'ann']:
+        if model_name in results_dict:
+            r_test = results_dict[model_name].sol(t_eval)[:3, :].T
+            error_vec = r_test - r_true
+
+            # Radial, along-track, cross-track errors
+            for i, component in enumerate(['X', 'Y', 'Z']):
+                ax4.plot(t_eval / 3600, error_vec[:, i] / 1000,
+                         linestyle='--' if model_name == 'ann' else '-',
+                         label=f'{labels[model_name]} - {component}',
+                         linewidth=1.2, alpha=0.7)
+
+    ax4.set_xlabel('Time [hours]', fontsize=10)
+    ax4.set_ylabel('Position Error Components [km]', fontsize=10)
+    ax4.set_title('Position Error Components', fontsize=11)
+    ax4.legend(fontsize=7, ncol=2)
+    ax4.grid(True, alpha=0.3)
+    ax4.tick_params(labelsize=9)
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close()
+
+    print(f"Orbit comparison plot saved to: {save_path}")
+
+    # Figure 2: Position and Velocity Errors (1x2 layout)
+    fig2, (ax_pos, ax_vel) = plt.subplots(1, 2, figsize=(8, 3.5))
+
+    # Position error
+    for model_name in ['spherical', 'ann']:
+        if model_name in results_dict:
+            r_test = results_dict[model_name].sol(t_eval)[:3, :].T
+            pos_error = compute_position_error(r_true, r_test)
+            ax_pos.plot(t_eval / 3600, pos_error / 1000,
+                        color=colors[model_name],
+                        label=labels[model_name],
+                        linewidth=1.5)
+
+    ax_pos.set_xlabel('Time [hours]', fontsize=10)
+    ax_pos.set_ylabel('Position Error [km]', fontsize=10)
+    ax_pos.set_title('Position Error', fontsize=11)
+    ax_pos.legend(fontsize=8)
+    ax_pos.grid(True, alpha=0.3)
+    ax_pos.set_yscale('log')
+    ax_pos.tick_params(labelsize=9)
+
+    # Velocity error
+    for model_name in ['spherical', 'ann']:
+        if model_name in results_dict:
+            v_test = results_dict[model_name].sol(t_eval)[3:, :].T
+            vel_error = compute_velocity_error(v_true, v_test)
+            ax_vel.plot(t_eval / 3600, vel_error,
+                        color=colors[model_name],
+                        label=labels[model_name],
+                        linewidth=1.5)
+
+    ax_vel.set_xlabel('Time [hours]', fontsize=10)
+    ax_vel.set_ylabel('Velocity Error [m/s]', fontsize=10)
+    ax_vel.set_title('Velocity Error', fontsize=11)
+    ax_vel.legend(fontsize=8)
+    ax_vel.grid(True, alpha=0.3)
+    ax_vel.set_yscale('log')
+    ax_vel.tick_params(labelsize=9)
+
+    plt.tight_layout()
+
+    # Save second figure
+    save_path_2 = save_path.replace('.png', '_errors.png')
+    plt.savefig(save_path_2, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close()
+
+    print(f"Error comparison plot saved to: {save_path_2}")
+
+
+def plot_error_statistics(results_dict, t_eval, save_path='error_statistics.png'):
+    """
+    Plot detailed error statistics
+    """
+    fig, axes = plt.subplots(2, 3, figsize=(8, 6))
+
+    r_true = results_dict['ground_truth'].sol(t_eval)[:3, :].T
+    v_true = results_dict['ground_truth'].sol(t_eval)[3:, :].T
+
+    models = ['spherical', 'ann']
+    colors = {'spherical': 'red', 'ann': 'green'}
+    labels = {'spherical': 'Spherical', 'ann': 'ANN'}
+
+    for idx, model_name in enumerate(models):
+        if model_name not in results_dict:
+            continue
+
+        r_test = results_dict[model_name].sol(t_eval)[:3, :].T
+        v_test = results_dict[model_name].sol(t_eval)[3:, :].T
+
+        # Position error components
+        ax = axes[idx, 0]
+        error_r = r_test - r_true
+        for i, comp in enumerate(['X', 'Y', 'Z']):
+            ax.plot(t_eval / 3600, error_r[:, i] / 1000,
+                    label=f'{comp}', linewidth=1.5)
+        ax.set_xlabel('Time [hours]', fontsize=9)
+        ax.set_ylabel('Position Error [km]', fontsize=9)
+        ax.set_title(f'{labels[model_name]} - Position Error Components', fontsize=10)
+        ax.legend(fontsize=8)
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(labelsize=8)
+
+        # Velocity error components
+        ax = axes[idx, 1]
+        error_v = v_test - v_true
+        for i, comp in enumerate(['Vx', 'Vy', 'Vz']):
+            ax.plot(t_eval / 3600, error_v[:, i],
+                    label=f'{comp}', linewidth=1.5)
+        ax.set_xlabel('Time [hours]', fontsize=9)
+        ax.set_ylabel('Velocity Error [m/s]', fontsize=9)
+        ax.set_title(f'{labels[model_name]} - Velocity Error Components', fontsize=10)
+        ax.legend(fontsize=8)
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(labelsize=8)
+
+        # Total error magnitude
+        ax = axes[idx, 2]
+        pos_error = compute_position_error(r_true, r_test)
+        vel_error = compute_velocity_error(v_true, v_test)
+
+        ax_twin = ax.twinx()
+        line1 = ax.plot(t_eval / 3600, pos_error / 1000,
+                        'b-', label='Position', linewidth=1.5)
+        line2 = ax_twin.plot(t_eval / 3600, vel_error,
+                             'r-', label='Velocity', linewidth=1.5)
+
+        ax.set_xlabel('Time [hours]', fontsize=9)
+        ax.set_ylabel('Position Error [km]', color='b', fontsize=9)
+        ax_twin.set_ylabel('Velocity Error [m/s]', color='r', fontsize=9)
+        ax.set_title(f'{labels[model_name]} - Total Error', fontsize=10)
+        ax.tick_params(axis='y', labelcolor='b', labelsize=8)
+        ax_twin.tick_params(axis='y', labelcolor='r', labelsize=8)
+
+        lines = line1 + line2
+        labs = [l.get_label() for l in lines]
+        ax.legend(lines, labs, loc='best', fontsize=8)
+        ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close()
+
+    print(f"Error statistics plot saved to: {save_path}")
 
 if __name__ == '__main__':
     pass

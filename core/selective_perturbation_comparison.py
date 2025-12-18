@@ -63,7 +63,7 @@ def compare_perturbation_scenarios(state0, t_span, t_eval, mesh, sim_data,
     out_dir : str
         Output directory
     """
-    from orbit_propagation_comparison import propagate_orbit
+    from orbit_propagation import propagate_orbit
 
     os.makedirs(out_dir, exist_ok=True)
 
