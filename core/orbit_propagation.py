@@ -215,7 +215,7 @@ def orbital_derivatives(t, state, params):
 # ==========================
 
 def propagate_orbit(state0, t_span, params, method='DOP853', rtol=1e-9, atol=1e-12,
-                    show_progress=False, desc="Propagating orbit"):
+                    show_progress=True, desc="Propagating orbit"):
     """
     Propagate orbit with specified perturbations
 

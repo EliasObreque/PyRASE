@@ -45,7 +45,7 @@ MESH = MESH.subdivide(1, subfilter='linear').clean()
 
 # Spacecraft parameters
 mass = 10.0  # kg (3U CubeSat)
-A_ref = (3 + 2 + 1) / 3  # m^2 (3U CubeSat: 0.03 m^2)
+A_ref = 1#(3 + 2 + 1) / 3  # m^2 (3U CubeSat: 0.03 m^2)
 
 # ==========================
 # EXAMPLE 1: BASIC COMPARISON
@@ -71,7 +71,7 @@ def example_basic_comparison():
         print(f"Mesh loaded: {mesh_path}")
 
     # Load ANN model
-    model_path = "results/optimization/rect_prism_data_1000_sample_10000/config_21/model_drag_f.pkl"
+    model_path = "results/optimization/rect_prism_data_1000_sample_10000/config_264/model.pkl"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ann_models = {}
     try:
@@ -109,7 +109,7 @@ def example_basic_comparison():
 
     # Propagation time (1 orbit)
     orbital_period = 2 * np.pi * np.sqrt(a ** 3 / MU_EARTH)
-    t_span = (0, 15 * orbital_period)
+    t_span = (0, 5 * orbital_period)
     t_eval = np.linspace(0, t_span[1], 200)
 
     print(f"\nInitial orbit:")
@@ -140,11 +140,12 @@ def example_basic_comparison():
         'mesh': mesh,
         'sim_data': sim_data,
         'A_ref': A_ref,
+        'ann_models': ann_models,
         'mass': mass,
         'include_drag': True,
         'include_srp': True,
-        'res_x': 100,  # Low resolution for speed
-        'res_y': 100
+        'res_x': 500,  # Low resolution for speed
+        'res_y': 500
     }
     results['ground_truth'] = propagate_orbit(state0, t_span, params_gt)
 
