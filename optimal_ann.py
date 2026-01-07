@@ -54,7 +54,7 @@ mpl.rcParams.update({
 
 # Data paths
 MAIN_FOLDER = "./results/data/"
-DATA_PATH = MAIN_FOLDER + "rect_prism_data_1000_sample_10000"
+DATA_PATH = MAIN_FOLDER + "aqua_b_data_1000_sample_2000"
 
 # Extract base filename for output folder
 BASE_NAME_FILE = Path(DATA_PATH).stem  # e.g., "rect_prism_data_1000_sample_10000"
@@ -71,8 +71,8 @@ THRESHOLD_VALUE = None  # Set to 1e-4 if needed
 # HYPERPARAMETER GRID
 # ==========================
 
-LAYERS_LIST = [3, 4]  # Number of hidden layers
-HIDDEN_LIST = [4, 6]  # Neurons per hidden layer
+LAYERS_LIST = [3, 4, 5, 6]  # Number of hidden layers
+HIDDEN_LIST = [3, 4, 5, 6]  # Neurons per hidden layer
 ACT_LIST = ["relu", "tanh"]  # Activation functions
 LR_LIST = [1e-2, 1e-3]  # Learning rates
 BATCH_LIST = [64, 128]  # Batch sizes

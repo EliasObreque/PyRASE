@@ -39,7 +39,7 @@ lx, ly, lz = 3, 1, 2
 res_x = res_y = 1000
 A_ref = 2
 
-FILENAME = f"./results/data/rect_prism_data_{res_y}_sample_{N_SAMPLE}"
+OUT_FILENAME = f"./results/data/rect_prism_data_{res_y}_sample_{N_SAMPLE}"
 
 FORCE = True
 
@@ -58,8 +58,8 @@ sim_data = {
     "lz": lz
 }
 
-data_mesh = compute_ann_data(mesh, sphere_vectors, sim_data, FILENAME, FORCE,
-                             save_analytical=True)
+data_mesh = compute_ann_data(mesh, sphere_vectors, sim_data, OUT_FILENAME, FORCE,
+                             save_analytical=True, reference_geometry="Rectangular")
 
 #%%
 fig, axes = plt.subplots(1, 3, figsize=(10, 4))

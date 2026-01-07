@@ -122,6 +122,7 @@ def compute_ray_tracing_fast_optimized(mesh: pv.PolyData, r_source: np.ndarray,
     cos_th_proj = np.einsum('ij,j->i', n_proj, r_source)
     proj_ids = cos_th_proj <= 0
     area_proj_mesh = np.sum(a_fem[proj_ids] * np.abs(cos_th_proj[proj_ids]))
+
     # === 8. Filter back-facing triangles (OPTIMIZED - vectorized) ===
     mask = cos_th < -1e-12
 

@@ -34,7 +34,7 @@ with open(DATA_PATH, "rb") as file_:
     data_mesh = pickle.load(file_)
 
 sim_data = data_mesh.get("sim_data")
-MODEL_DRAG = 'drag_f'
+MODEL_DRAG = 'drag_t'
 
 THRESHOLD_VALUE = None
 
@@ -65,7 +65,7 @@ y_train_original = res_data_original[0].dataset.tensors[1].cpu().numpy()
 
 # Plot comparison
 fig, axes = plt.subplots(2, 3, figsize=(12, 6))
-
+fig.suptitle(r"Drag Torque $\tilde{\boldsymbol{\tau}}_{d}$ distribution")
 # Row 1: Original
 axes[0, 0].hist(y_train_original[:, 0], bins=50, alpha=0.7, color='blue')
 axes[0, 0].set_title("Original x-axis")
@@ -83,6 +83,7 @@ axes[1, 2].hist(y_train_transformed[:, 2], bins=50, alpha=0.7, color='red')
 axes[1, 2].set_title("Transformed z-axis")
 
 plt.tight_layout()
+plt.show()
 
 # Recover data using scaler
 recovered_data = scaler.inverse_transform(y_train_transformed)

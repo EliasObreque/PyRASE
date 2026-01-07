@@ -15,14 +15,14 @@ import os
 from core.monitor import show_ray_tracing_fast
 from core.optimal_ray_tracing import compute_ray_tracing_fast_optimized
 from core.drag_models import (compute_fmf_drag_model, compute_analytical_prism_coefficients,
-                              compute_coefficients_schaaf, get_atmospheric_condition)
+                              compute_coefficients_schaaf, get_atmospheric_condition, get_sphere_drag_coefficient)
 from core.srp_models import compute_srp_lambert_model
-
+kB = 1.3806488e-23 # J/K
 
 def compute_ann_data(mesh, sphere_vectors:np.ndarray, sim_data: dict,
                      filename: str, force: bool,
                      res_x:int = 500, res_y:int = 500, save_analytical=False,
-                     save_data=True):
+                     save_data=True, reference_geometry="Sphere"):
     
     data_mesh = {"r_": [],
                  #"mesh_results": [],
@@ -41,6 +41,8 @@ def compute_ann_data(mesh, sphere_vectors:np.ndarray, sim_data: dict,
                  "T_srp": [],
                  "Cr_CB": [],
                  "Cr_model": [],
+                 "Cd_sphere": [],
+                 "Cd_model": [],
                  "Cr_error": []
                  }
     
@@ -80,8 +82,7 @@ def compute_ann_data(mesh, sphere_vectors:np.ndarray, sim_data: dict,
         data_mesh["sim_data"] = sim_data
         
         Cr = 1 + spec + 2*diffuse/3
-        print("CR:", Cr)
-        
+        vm = np.sqrt(2.0 * kB * T_inf / m_particle)
         N_SAMPLE = len(sphere_vectors)
         
         for r_inout in tqdm(sphere_vectors, "Computation of perturbation", N_SAMPLE):
@@ -107,14 +108,22 @@ def compute_ann_data(mesh, sphere_vectors:np.ndarray, sim_data: dict,
                 ca = cn = cs = 99
                 error_ca = error_cn = error_cs = 99
 
+            A_ref = res_prop.get("A_fem_proj", A_ref)
             Cr_model = np.linalg.norm(F_srp_total) / A_ref / P_SRP
-        
-            error_cr = Cr_model - Cr
-            print(f"\nCoefficients errors: Ca = {error_ca}, Cn = {error_cn}, Cs = {error_cs}, Cr = {error_cr}")
-            
-            if np.abs(error_ca) > 0.2 or np.abs(error_cn) > 0.2 or np.abs(error_cs) > 0.2:
-                show_ray_tracing_fast(mesh, res_prop, filename="", show_mesh=True, save_3d=False)
-            
+            T_ratio = (T_wall / T_inf)
+            s = (v_inf / vm)
+            Cd_sphere = get_sphere_drag_coefficient(s, T_ratio, sigma_N, sigma_T)
+            Cd_model = np.linalg.norm(F_drag_total) / A_ref / q_inf
+            print(f"\n Currents DRAG values. CD sphere: {Cd_sphere} - CD model: {Cd_model}", A_ref)
+            print(f"\n Currents SRP values. CR sphere: {Cr} - CR model: {Cr_model}", A_ref)
+            if save_analytical:
+                error_cr = Cr_model - Cr
+                print(f"\nCoefficients errors: Ca = {error_ca}, Cn = {error_cn}, Cs = {error_cs}, Cr = {error_cr}")
+
+                if np.abs(error_ca) > 0.2 or np.abs(error_cn) > 0.2 or np.abs(error_cs) > 0.2:
+                    show_ray_tracing_fast(mesh, res_prop, filename="", show_mesh=True, save_3d=False)
+            else:
+                error_cr = 99
             data_mesh["r_"].append(r_inout)
             # data_mesh["mesh_results"].append(res_prop)
             # drag
@@ -135,8 +144,10 @@ def compute_ann_data(mesh, sphere_vectors:np.ndarray, sim_data: dict,
             data_mesh["T_srp"].append(T_srp_total)
             data_mesh["Cr_CB"].append(Cr)
             data_mesh["Cr_model"].append(Cr_model)
+            data_mesh["Cd_sphere"].append(Cd_sphere)
+            data_mesh["Cd_model"].append(Cd_model)
             data_mesh["Cr_error"].append(error_cr)
-            
+            print("Force:", F_srp_total, F_drag_total)
         if save_data:
             with open(filename, "wb") as file_:
                 pickle.dump(data_mesh, file_)

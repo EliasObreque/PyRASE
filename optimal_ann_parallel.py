@@ -50,7 +50,7 @@ mpl.rcParams.update({
 
 # Data paths
 MAIN_FOLDER = "./results/data/"
-DATA_PATH = MAIN_FOLDER + "rect_prism_data_1000_sample_10000"
+DATA_PATH = MAIN_FOLDER + "aqua_b_data_1000_sample_2000"
 
 # Extract base filename for output folder
 BASE_NAME_FILE = Path(DATA_PATH).stem
@@ -80,7 +80,7 @@ PATIENCE = 100
 WEIGHT_DECAY = 1e-4
 
 # Parallelization settings
-N_WORKERS = max(1, cpu_count() - 1)
+N_WORKERS = max(1, int(cpu_count()/2))
 print(f"Available CPUs: {cpu_count()}, Using: {N_WORKERS} workers")
 
 # Device
