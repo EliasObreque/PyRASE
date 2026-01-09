@@ -168,6 +168,24 @@ def get_dynamic_pressure(velocity_body, alt_km, time_str):
     v_mag = np.linalg.norm(velocity_body)
     return 0.5 * rho * v_mag ** 2
 
+def compute_analytical_prism_step(v_body, sim_data, params):
+    lx, ly, lz = params['lx'], params['ly'], params['lz']
+    sigma_N = sim_data["sigma_N"]
+    sigma_T = sim_data["sigma_T"]
+
+    alt_km = sim_data['alt_km']
+    time_str = sim_data['time_str']
+    T_inf, rho, m_particle, r_specific = get_atmospheric_condition(time_str, alt_km)
+    T_wall = sim_data['T_wall']
+
+    f_ca, f_cs, f_cn, _ = compute_analytical_prism_coefficients(
+        lx, ly, lz, v_body, sigma_N, sigma_T,
+        T_inf, T_wall, m_particle, A_ref=1.0
+    )
+    v_mag = np.linalg.norm(v_body)
+    q_inf = 0.5 * rho * v_mag ** 2
+    return np.array([f_ca, f_cs, f_cn]) * q_inf
+
 def compute_analytical_prism_coefficients(lx, ly, lz, v_body, sigma_n, sigma_t,
                                           temp_inf, temp_wall, m_particle,
                                           A_ref=None):
@@ -180,19 +198,20 @@ def compute_analytical_prism_coefficients(lx, ly, lz, v_body, sigma_n, sigma_t,
     
     # 6 faces
     faces = {
-        'x_pos': {'normal': np.array([1, 0, 0]), 'area': ly * lz},
-        'x_neg': {'normal': np.array([-1, 0, 0]), 'area': ly * lz},
-        'y_pos': {'normal': np.array([0, 1, 0]), 'area': lx * lz},
-        'y_neg': {'normal': np.array([0, -1, 0]), 'area': lx * lz},
-        'z_pos': {'normal': np.array([0, 0, 1]), 'area': lx * ly},
-        'z_neg': {'normal': np.array([0, 0, -1]), 'area': lx * ly},
+        'x_pos': {'normal': np.array([1, 0, 0]), 'area': ly * lz, 'pos': np.array([lx * 0.5, 0.0, 0.0])},
+        'x_neg': {'normal': np.array([-1, 0, 0]), 'area': ly * lz, 'pos': np.array([-lx * 0.5, 0.0, 0.0])},
+        'y_pos': {'normal': np.array([0, 1, 0]), 'area': lx * lz, 'pos': np.array([0.0, ly * 0.5, 0.0])},
+        'y_neg': {'normal': np.array([0, -1, 0]), 'area': lx * lz, 'pos': np.array([0.0, -ly * 0.5, 0.0])},
+        'z_pos': {'normal': np.array([0, 0, 1]), 'area': lx * ly, 'pos': np.array([0.0, 0.0, lz * 0.5])},
+        'z_neg': {'normal': np.array([0, 0, -1]), 'area': lx * ly, 'pos': np.array([0.0, 0.0, -lz * 0.5])},
     }
 
     F_total_body = np.zeros(3)
-
+    T_total_body = np.zeros(3)
     for face_name, face_data in faces.items():
         normal = face_data['normal']
         area = face_data['area']
+        pos = face_data['pos']
         cos_theta = np.dot(v_body_unit, normal)
 
         if cos_theta > 0:
@@ -209,12 +228,12 @@ def compute_analytical_prism_coefficients(lx, ly, lz, v_body, sigma_n, sigma_t,
             F_normal = cn * area * normal
             F_tangential = ct * area * tangent
             F_total_body += F_normal + F_tangential
+            T_total_body += np.cross(pos,  F_normal + F_tangential)
 
     C_A = F_total_body[0] / A_ref
     C_S = F_total_body[1] / A_ref
     C_N = F_total_body[2] / A_ref
     Cd = np.linalg.norm(F_total_body) / A_ref
-
     return C_A, C_S, C_N, Cd
 
 # ============================================================================

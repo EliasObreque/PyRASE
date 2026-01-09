@@ -54,7 +54,7 @@ mpl.rcParams.update({
 
 # Data paths
 MAIN_FOLDER = "./results/data/"
-DATA_PATH = MAIN_FOLDER + "aqua_b_data_1000_sample_2000"
+DATA_PATH = MAIN_FOLDER + "align_data_1000_sample_2000"
 
 # Extract base filename for output folder
 BASE_NAME_FILE = Path(DATA_PATH).stem  # e.g., "rect_prism_data_1000_sample_10000"
