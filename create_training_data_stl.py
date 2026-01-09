@@ -15,12 +15,12 @@ from core.optimal_ray_tracing import compute_ray_tracing_fast_optimized
 
 
 # MESH
-reader = pv.get_reader("./models/Aqua+(B).stl")
+reader = pv.get_reader("./models/ALIGN-6U.stl")
 mesh = reader.read()
 # mesh.rotate_y(90, inplace=True)
-#MESH_SCALE = 1e-3 # m, km, mm, cm
+MESH_SCALE = 1e-3 # m, km, mm, cm
 lx, ly, lz = mesh.bounds_size
-#mesh.points *= MESH_SCALE
+mesh.points *= MESH_SCALE
 pl = pv.Plotter()
 _ = pl.add_mesh(mesh, show_edges=True)
 _ = pl.show_grid()
@@ -33,7 +33,7 @@ res_y = 1000
 N_SAMPLE = 2000
 sphere_vectors = halton_sphere(N_SAMPLE)
 
-OUT_FILENAME = f"./results/data/aqua_b_data_{res_y}_sample_{N_SAMPLE}"
+OUT_FILENAME = f"./results/data/align_data_{res_y}_sample_{N_SAMPLE}"
 
 
 A_ref = (lx*ly + ly*lz + lz*lz) / 3

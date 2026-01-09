@@ -50,15 +50,20 @@ mpl.rcParams.update({
 
 # Data paths
 MAIN_FOLDER = "./results/data/"
-DATA_PATH = MAIN_FOLDER + "aqua_b_data_1000_sample_2000"
+DATA_PATH = MAIN_FOLDER + "align_data_1000_sample_2000"
+
+# Model type
+PERTURBATION_STATE = 'srp_t'
+
 
 # Extract base filename for output folder
 BASE_NAME_FILE = Path(DATA_PATH).stem
-OUT_DIR = f"./results/optimization/{BASE_NAME_FILE}/"
+OUT_DIR = f"./results/optimization/{BASE_NAME_FILE}/{PERTURBATION_STATE}"
 os.makedirs(OUT_DIR, exist_ok=True)
 
-# Model type
-MODEL_DRAG = 'drag_f'
+import pickle
+data = pickle.load(open(DATA_PATH, 'rb'))
+print("Keys:", list(data.keys()))
 
 # Threshold for filtering near-zero values
 THRESHOLD_VALUE = None
@@ -75,8 +80,8 @@ BATCH_LIST = [64, 128]
 SEEDS = [0, 1, 2]
 
 # Training parameters
-EPOCHS = 5000
-PATIENCE = 100
+EPOCHS = 500
+PATIENCE = 10
 WEIGHT_DECAY = 1e-4
 
 # Parallelization settings
@@ -147,7 +152,7 @@ def export_model_for_esp32(model, scaler, filename, config):
     total_params = sum(p.numel() for p in model.parameters())
 
     with open(filename, 'w') as f:
-        f.write(f"// ANN Model for {MODEL_DRAG}\n")
+        f.write(f"// ANN Model for {PERTURBATION_STATE}\n")
         f.write(f"// Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write("//" + "=" * 60 + "\n\n")
 
@@ -233,8 +238,8 @@ def save_training_curves(train_losses, val_losses, save_path):
     plt.close()
 
 
-def evaluate_and_save_predictions(model, tX, tY, scaler, config_dir, model_type):
-    """Evaluate model and save prediction plots (UNCHANGED FROM ORIGINAL)"""
+def evaluate_and_save_predictions(model, tX, tY, scaler, config_dir, model_type, dataset_name='predictions'):
+    """Evaluate model and save prediction plots with R² score"""
 
     model.eval()
 
@@ -250,6 +255,11 @@ def evaluate_and_save_predictions(model, tX, tY, scaler, config_dir, model_type)
     else:
         output_names = [f'Output_{i}' for i in range(P_test.shape[1])]
 
+    # Compute R² score
+    ss_res = np.sum((Y_test - P_test) ** 2)
+    ss_tot = np.sum((Y_test - np.mean(Y_test, axis=0)) ** 2)
+    r2_score = 1 - (ss_res / ss_tot)
+
     # Create plots
     n_outputs = P_test.shape[1]
     fig, axes = plt.subplots(1, n_outputs, figsize=(5 * n_outputs, 4))
@@ -264,14 +274,30 @@ def evaluate_and_save_predictions(model, tX, tY, scaler, config_dir, model_type)
         max_val = max(Y_test[:, i].max(), P_test[:, i].max())
         ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Perfect')
 
+        # Compute per-output R²
+        ss_res_i = np.sum((Y_test[:, i] - P_test[:, i]) ** 2)
+        ss_tot_i = np.sum((Y_test[:, i] - np.mean(Y_test[:, i])) ** 2)
+        r2_i = 1 - (ss_res_i / ss_tot_i)
+
         ax.set_xlabel(f'True {name}')
         ax.set_ylabel(f'Predicted {name}')
-        ax.set_title(f'{name} Predictions', fontweight='bold')
+        ax.set_title(f'{name} (R²={r2_i:.4f})', fontweight='bold')
         ax.legend()
         ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plot_path = os.path.join(config_dir, 'predictions.png')
+    
+    # Add main title for the entire figure
+    dataset_title_map = {
+        'train_predictions': 'Training Dataset',
+        'val_predictions': 'Validation Dataset',
+        'test_predictions': 'Test Dataset',
+        'predictions': 'Predictions'
+    }
+    main_title = dataset_title_map.get(dataset_name, dataset_name.replace('_', ' ').title())
+    fig.suptitle(main_title, fontweight='bold', y=1.02)
+    
+    plot_path = os.path.join(config_dir, f'{dataset_name}.png')
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.close()
 
@@ -286,15 +312,22 @@ def evaluate_and_save_predictions(model, tX, tY, scaler, config_dir, model_type)
         mse_i = np.mean((P_test[:, i] - Y_test[:, i]) ** 2)
         mae_i = np.mean(np.abs(P_test[:, i] - Y_test[:, i]))
         rmse_i = np.sqrt(mse_i)
+        
+        # Per-output R²
+        ss_res_i = np.sum((Y_test[:, i] - P_test[:, i]) ** 2)
+        ss_tot_i = np.sum((Y_test[:, i] - np.mean(Y_test[:, i])) ** 2)
+        r2_i = 1 - (ss_res_i / ss_tot_i)
+        
         per_output_metrics.append({
             'output': output_names[i],
             'mse': float(mse_i),
             'mae': float(mae_i),
-            'rmse': float(rmse_i)
+            'rmse': float(rmse_i),
+            'r2': float(r2_i)
         })
 
     return {
-        'overall': {'mse': float(mse), 'mae': float(mae), 'rmse': float(rmse)},
+        'overall': {'mse': float(mse), 'mae': float(mae), 'rmse': float(rmse), 'r2': float(r2_score)},
         'per_output': per_output_metrics
     }
 
@@ -310,7 +343,7 @@ def train_single_config(config_dict, config_id, seed_idx, seed):
     # Prepare data
     res_data = prepare_data_for_training(
         data_mesh,
-        output_type=MODEL_DRAG,
+        output_type=PERTURBATION_STATE,
         batch_size=config_dict['batch'],
         seed=seed,
         normalization='minmax',
@@ -342,7 +375,11 @@ def train_single_config(config_dict, config_id, seed_idx, seed):
         device=DEVICE
     )
 
-    return model, val_loss, train_losses, val_losses, tX, tY, scaler
+    # Extract training data tensors from train_loader
+    train_X = train_loader.dataset.tensors[0]
+    train_Y = train_loader.dataset.tensors[1]
+
+    return model, val_loss, train_losses, val_losses, train_X, train_Y, vX, vY, tX, tY, scaler
 
 
 # ==========================
@@ -380,7 +417,7 @@ def process_single_configuration(args):
         best_seed_loss = float('inf')
 
         for seed_idx, seed in enumerate(SEEDS):
-            model, val_loss, train_losses, val_losses, tX, tY, scaler = \
+            model, val_loss, train_losses, val_losses, train_X, train_Y, vX, vY, tX, tY, scaler = \
                 train_single_config(config_dict, config_id, seed_idx, seed)
 
             seed_losses.append(val_loss)
@@ -391,18 +428,33 @@ def process_single_configuration(args):
                 best_seed_idx = seed_idx
                 best_model = model
                 best_scaler = scaler
+                best_train_X = train_X
+                best_train_Y = train_Y
+                best_vX = vX
+                best_vY = vY
                 best_tX = tX
                 best_tY = tY
                 best_train_losses = train_losses
                 best_val_losses = val_losses
 
-        # Save results for best seed (EXACT COPY FROM ORIGINAL)
+        # Save results for best seed
         curves_path = os.path.join(config_dir, 'training_curves.png')
         save_training_curves(best_train_losses, best_val_losses, curves_path)
 
+        # Evaluate on training, validation, and test sets
+        train_metrics = evaluate_and_save_predictions(
+            best_model, best_train_X, best_train_Y, best_scaler,
+            config_dir, PERTURBATION_STATE, dataset_name='train_predictions'
+        )
+
+        val_metrics = evaluate_and_save_predictions(
+            best_model, best_vX, best_vY, best_scaler,
+            config_dir, PERTURBATION_STATE, dataset_name='val_predictions'
+        )
+
         test_metrics = evaluate_and_save_predictions(
             best_model, best_tX, best_tY, best_scaler,
-            config_dir, MODEL_DRAG
+            config_dir, PERTURBATION_STATE, dataset_name='test_predictions'
         )
 
         # Export best model
@@ -439,19 +491,35 @@ def process_single_configuration(args):
             f.write(f"Min:  {np.min(seed_losses):.6f}\n")
             f.write(f"Max:  {np.max(seed_losses):.6f}\n\n")
 
+            f.write("Training Set Performance (Best Seed):\n")
+            f.write("-" * 70 + "\n")
+            f.write(f"MSE:  {train_metrics['overall']['mse']:.6f}\n")
+            f.write(f"MAE:  {train_metrics['overall']['mae']:.6f}\n")
+            f.write(f"RMSE: {train_metrics['overall']['rmse']:.6f}\n")
+            f.write(f"R²:   {train_metrics['overall']['r2']:.6f}\n\n")
+
+            f.write("Validation Set Performance (Best Seed):\n")
+            f.write("-" * 70 + "\n")
+            f.write(f"MSE:  {val_metrics['overall']['mse']:.6f}\n")
+            f.write(f"MAE:  {val_metrics['overall']['mae']:.6f}\n")
+            f.write(f"RMSE: {val_metrics['overall']['rmse']:.6f}\n")
+            f.write(f"R²:   {val_metrics['overall']['r2']:.6f}\n\n")
+
             f.write("Test Set Performance (Best Seed):\n")
             f.write("-" * 70 + "\n")
             f.write(f"MSE:  {test_metrics['overall']['mse']:.6f}\n")
             f.write(f"MAE:  {test_metrics['overall']['mae']:.6f}\n")
-            f.write(f"RMSE: {test_metrics['overall']['rmse']:.6f}\n\n")
+            f.write(f"RMSE: {test_metrics['overall']['rmse']:.6f}\n")
+            f.write(f"R²:   {test_metrics['overall']['r2']:.6f}\n\n")
 
-            f.write("Per-Output Metrics:\n")
+            f.write("Per-Output Metrics (Test Set):\n")
             f.write("-" * 70 + "\n")
             for metric in test_metrics['per_output']:
                 f.write(f"{metric['output']}:\n")
                 f.write(f"  MSE:  {metric['mse']:.6f}\n")
                 f.write(f"  MAE:  {metric['mae']:.6f}\n")
                 f.write(f"  RMSE: {metric['rmse']:.6f}\n")
+                f.write(f"  R²:   {metric['r2']:.6f}\n")
 
         # Return summary
         result_summary = {
@@ -469,6 +537,7 @@ def process_single_configuration(args):
             'test_mse': test_metrics['overall']['mse'],
             'test_mae': test_metrics['overall']['mae'],
             'test_rmse': test_metrics['overall']['rmse'],
+            'test_r2': test_metrics['overall']['r2'],
             'best_seed': SEEDS[best_seed_idx]
         }
 
@@ -492,7 +561,7 @@ def run_comprehensive_search_parallel():
     print("PARALLEL HYPERPARAMETER SEARCH")
     print("=" * 70)
     print(f"Output directory: {OUT_DIR}")
-    print(f"Model type: {MODEL_DRAG}")
+    print(f"Model type: {PERTURBATION_STATE}")
     print(f"Workers: {N_WORKERS}")
     print("=" * 70)
 
@@ -686,16 +755,22 @@ if __name__ == "__main__":
     print("=" * 70)
     print(f"Data: {BASE_NAME_FILE}")
     print(f"Output: {OUT_DIR}")
-    print(f"Model type: {MODEL_DRAG}")
+    print(f"Model type: {PERTURBATION_STATE}")
     print("=" * 70)
 
     # Run parallel hyperparameter search
-    results_df = run_comprehensive_search_parallel()
-
-    # Save results CSV
+    # if file not exist
     csv_path = os.path.join(OUT_DIR, "all_results.csv")
-    results_df.to_csv(csv_path, index=False)
-    print(f"\nAll results saved to: {csv_path}")
+    if not os.path.exists(csv_path):
+        results_df = run_comprehensive_search_parallel()
+        results_df.to_csv(csv_path, index=False)
+        print(f"\nAll results saved to: {csv_path}")
+    else:
+        results_df = pd.read_csv(csv_path)
+        print("Keys:", list(results_df.keys()))
+    # Save results CSV
+  
+
 
     # Find and report best configuration
     best_idx = results_df['val_loss_mean'].idxmin()
@@ -714,6 +789,7 @@ if __name__ == "__main__":
     print(f"\nValidation loss: {best_config['val_loss_mean']:.6f} ± {best_config['val_loss_std']:.6f}")
     print(f"Test RMSE: {best_config['test_rmse']:.6f}")
     print(f"Test MAE: {best_config['test_mae']:.6f}")
+    print(f"Test R²: {best_config['test_r2']:.6f}")
     print(f"\nBest model location: {OUT_DIR}/config_{int(best_config['config_id'])}/")
     print("=" * 70)
 
@@ -737,6 +813,7 @@ if __name__ == "__main__":
         f.write(f"  Test MSE: {best_config['test_mse']:.6f}\n")
         f.write(f"  Test MAE: {best_config['test_mae']:.6f}\n")
         f.write(f"  Test RMSE: {best_config['test_rmse']:.6f}\n")
+        f.write(f"  Test R²: {best_config['test_r2']:.6f}\n")
 
     # Create comparison plots
     create_comparison_plots(results_df, OUT_DIR)
