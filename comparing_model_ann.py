@@ -3,6 +3,7 @@ Created by Elias Obreque
 Date: 16/12/2025
 email: els.obrq@gmail.com
 """
+from matplotlib import pyplot as plt
 
 # -*- coding: utf-8 -*-
 """
@@ -31,8 +32,9 @@ from core.orbit_propagation import (
     plot_error_statistics,
     print_error_summary,
     MU_EARTH,
-    R_EARTH
+    R_EARTH,
 )
+from core.monitor import plot_orbit_comparison, plot_error_statistics, plot_orbit_hill_frame, get_hill_frame_ON, plot_orbit
 
 from core.selective_perturbation_comparison import (
     compare_perturbation_scenarios
@@ -45,13 +47,12 @@ MESH = MESH.subdivide(1, subfilter='linear').clean()
 
 # Spacecraft parameters
 mass = 10.0  # kg (3U CubeSat)
-A_ref = 1#(3 + 2 + 1) / 3  # m^2 (3U CubeSat: 0.03 m^2)
 
 # ==========================
 # EXAMPLE 1: BASIC COMPARISON
 # ==========================
 
-def example_basic_comparison():
+def example_basic_comparison(n_orbits):
     """
     Basic comparison of all three models with default parameters
     """
@@ -68,7 +69,12 @@ def example_basic_comparison():
     mesh = MESH
     if os.path.exists(mesh_path):
         mesh = pv.read(mesh_path)
-        print(f"Mesh loaded: {mesh_path}")
+        print(f"\nMesh loaded: {mesh_path}")
+    plotter = pv.Plotter()
+    plotter.add_mesh(mesh)
+    #plotter.show()
+    lx, ly, lz = mesh.bounds_size
+    a_ref = (lx*ly + lx*lz + ly*lz) / 3
 
     # Load ANN model
     model_path = "results/optimization/rect_prism_data_1000_sample_10000/config_264/model.pkl"
@@ -87,7 +93,7 @@ def example_basic_comparison():
     # Define initial orbit (400 km circular LEO, 51.6° inclination)
     a = R_EARTH + 400e3  # m
     e = 0.001
-    i = np.deg2rad(51.6)
+    i = np.deg2rad(80.0)
 
     # Simple initial state (circular orbit in equatorial plane)
     r0 = np.array([a, 0, 0])
@@ -105,12 +111,14 @@ def example_basic_comparison():
     r0 = R_i @ r0
     v0 = R_i @ v0
 
+    rho_ = get_hill_frame_ON(r0, v0) @ np.array([1, 1, 1.0])
+
     state0 = np.concatenate([r0, v0])
 
     # Propagation time (1 orbit)
     orbital_period = 2 * np.pi * np.sqrt(a ** 3 / MU_EARTH)
-    t_span = (0, 5 * orbital_period)
-    t_eval = np.linspace(0, t_span[1], 200)
+    t_span = (0, n_orbits * orbital_period)
+    t_eval = np.linspace(0, t_span[1], int(100 * n_orbits))
 
     print(f"\nInitial orbit:")
     print(f"  Altitude: {(a - R_EARTH) / 1000:.2f} km")
@@ -125,13 +133,54 @@ def example_basic_comparison():
         'sigma_N': 0.9,
         'sigma_T': 0.9,
         'T_wall': 300,
-        'A_ref': A_ref,
+        'A_ref': a_ref,
         'spec_srp': 0.1,
         'diffuse_srp': 0.5
     }
 
     # Propagate orbits
     results = {}
+    # 1. Nominal
+    print("\nPropagating Ground Truth (Ray Tracing)...")
+    params_gt = {
+        'model_type': 'nominal_j2',
+        'mesh': None,
+        'sim_data': sim_data,
+        'A_ref': a_ref,
+        'ann_models': None,
+        'mass': mass,
+        'include_drag': False,
+        'include_srp': False,
+        'res_x': 500,  # Low resolution for speed
+        'res_y': 500
+    }
+    results['nominal_j2'] = propagate_orbit(state0, t_span, params_gt)
+
+    # 2. Spherical Model
+    print("\nPropagating Spherical Model...")
+    params_sph = {
+        'model_type': 'spherical',
+        'sim_data': sim_data,
+        'A_ref': a_ref,
+        'mass': mass,
+        'include_drag': True,
+        'include_srp': False
+    }
+    results['spherical'] = propagate_orbit(state0, t_span, params_sph)
+
+    # 3. ANN Model (if available)
+    if ann_models is not None:
+        print("\nPropagating ANN Model...")
+        params_ann = {
+            'model_type': 'ann',
+            'ann_models': ann_models,
+            'sim_data': sim_data,
+            'mass': mass,
+            'include_drag': True,
+            'include_srp': False,
+            'device': device
+        }
+        results['ann'] = propagate_orbit(state0, t_span, params_ann)
 
     # 1. Ground Truth
     print("\nPropagating Ground Truth (Ray Tracing)...")
@@ -139,46 +188,38 @@ def example_basic_comparison():
         'model_type': 'ground_truth',
         'mesh': mesh,
         'sim_data': sim_data,
-        'A_ref': A_ref,
+        'A_ref': a_ref,
         'ann_models': ann_models,
         'mass': mass,
         'include_drag': True,
-        'include_srp': True,
-        'res_x': 500,  # Low resolution for speed
-        'res_y': 500
+        'include_srp': False,
+        'res_x': 1000,  # Low resolution for speed
+        'res_y': 1000
+    }
+    # results['ground_truth'] = propagate_orbit(state0, t_span, params_gt)
+
+    print("\nPropagating Ground Truth (Theory)...")
+    params_gt = {
+        'model_type': 'ground_truth_theory',
+        'mesh': mesh,
+        'sim_data': sim_data,
+        'A_ref': a_ref,
+        'ann_models': None,
+        'mass': mass,
+        'include_drag': True,
+        'include_srp': False,
+        'lx': lx,
+        'ly': ly,
+        'lz': lz,
     }
     results['ground_truth'] = propagate_orbit(state0, t_span, params_gt)
 
-    # 2. Spherical Model
-    print("Propagating Spherical Model...")
-    params_sph = {
-        'model_type': 'spherical',
-        'sim_data': sim_data,
-        'A_ref': A_ref,
-        'mass': mass,
-        'include_drag': True,
-        'include_srp': True
-    }
-    results['spherical'] = propagate_orbit(state0, t_span, params_sph)
-
-    # 3. ANN Model (if available)
-    if ann_models is not None:
-        print("Propagating ANN Model...")
-        params_ann = {
-            'model_type': 'ann',
-            'ann_models': ann_models,
-            'sim_data': sim_data,
-            'mass': mass,
-            'include_drag': True,
-            'include_srp': True,
-            'device': device
-        }
-        results['ann'] = propagate_orbit(state0, t_span, params_ann)
-
+    plot_orbit(results, t_eval,)
     # Generate plots
     print("\nGenerating comparison plots...")
     plot_orbit_comparison(results, t_eval,
                           save_path=os.path.join(out_dir, 'comparison.png'))
+    plot_orbit_hill_frame(results, t_eval, os.path.join(out_dir, 'hill_orbit_comparison.png'))
 
     if len(results) > 2:  # If ANN model is available
         plot_error_statistics(results, t_eval,
@@ -186,205 +227,11 @@ def example_basic_comparison():
 
     # Print error summary
     print_error_summary(results, t_eval)
-
+    plt.show()
     print(f"\nResults saved to: {out_dir}")
     print("=" * 70)
-
-    return results, t_eval
-
-
-
-# ==========================
-# EXAMPLE 3: CUSTOM CONFIGURATION
-# ==========================
-
-def example_custom_config():
-    """
-    Demonstrate custom configuration options
-    """
-    print("\n" + "=" * 70)
-    print("EXAMPLE 3: CUSTOM CONFIGURATION")
-    print("=" * 70)
-
-    out_dir = "./results/example_custom/"
-    os.makedirs(out_dir, exist_ok=True)
-
-    # Custom orbit: Highly elliptical (Molniya-like)
-    a = R_EARTH + 20000e3  # Semi-major axis
-    e = 0.7  # High eccentricity
-    i = np.deg2rad(63.4)  # Critical inclination
-
-    # Convert to Cartesian (at perigee)
-    r_perigee = a * (1 - e)
-    v_perigee = np.sqrt(MU_EARTH * (2 / r_perigee - 1 / a))
-
-    r0 = np.array([r_perigee, 0, 0])
-    v0 = np.array([0, v_perigee, 0])
-
-    # Apply inclination
-    cos_i = np.cos(i)
-    sin_i = np.sin(i)
-    R_i = np.array([
-        [1, 0, 0],
-        [0, cos_i, -sin_i],
-        [0, sin_i, cos_i]
-    ])
-
-    r0 = R_i @ r0
-    v0 = R_i @ v0
-    state0 = np.concatenate([r0, v0])
-
-    # Propagation (half orbit)
-    orbital_period = 2 * np.pi * np.sqrt(a ** 3 / MU_EARTH)
-    t_span = (0, 0.5 * orbital_period)
-    t_eval = np.linspace(0, t_span[1], 500)
-
-    print(f"\nCustom orbit:")
-    print(f"  Semi-major axis: {a / 1000:.0f} km")
-    print(f"  Eccentricity: {e:.2f}")
-    print(f"  Perigee altitude: {(r_perigee - R_EARTH) / 1000:.0f} km")
-    print(f"  Apogee altitude: {(a * (1 + e) - R_EARTH) / 1000:.0f} km")
-    print(f"  Period: {orbital_period / 3600:.2f} hours")
-
-
-    # Custom atmospheric parameters (higher altitude)
-    sim_data = {
-        'v_inf': v_perigee,
-        'alt_km': (r_perigee - R_EARTH) / 1000,
-        'time_str': '2024-06-15 12:00:00',  # Different date
-        'sigma_N': 0.95,  # Higher accommodation
-        'sigma_T': 0.95,
-        'T_wall': 320,
-        'A_ref': A_ref,
-        'spec_srp': 0.2,  # More specular reflection
-        'diffuse_srp': 0.4
-    }
-
-    # Model
-    try:
-        model_path = "./models/model.pkl"
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        ann_model, ann_scaler = load_ann_model(model_path, device)
-    except:
-        print("ANN model not available")
-        ann_model = None
-        ann_scaler = None
-
-    # Propagate with custom integration settings
-    print("\nPropagating with high-precision settings...")
-
-    results = {}
-
-    # Spherical model with custom tolerances
-    params_sph = {
-        'model_type': 'spherical',
-        'sim_data': sim_data,
-        'A_ref': A_ref,
-        'mass': mass,
-        'include_drag': True,
-        'include_srp': True
-    }
-
-    results['spherical'] = propagate_orbit(
-        state0, t_span, params_sph,
-        method='DOP853',
-        rtol=1e-12,  # Very tight tolerance
-        atol=1e-15
-    )
-
-    print("Custom configuration completed!")
-    print(f"Results saved to: {out_dir}")
-    print("=" * 70)
-
+    results['t_eval'] = t_eval
     return results
-
-
-# ==========================
-# EXAMPLE 4: DRAG ONLY VS SRP ONLY
-# ==========================
-
-def example_drag_vs_srp():
-    """
-    Compare relative importance of drag vs SRP
-    """
-    print("\n" + "=" * 70)
-    print("EXAMPLE 4: DRAG VS SRP COMPARISON")
-    print("=" * 70)
-
-    out_dir = "./results/example_drag_vs_srp/"
-    os.makedirs(out_dir, exist_ok=True)
-
-    # Setup
-    a = R_EARTH + 400e3
-    state0 = np.array([a, 0, 0, 0, np.sqrt(MU_EARTH / a), 0])
-
-    orbital_period = 2 * np.pi * np.sqrt(a ** 3 / MU_EARTH)
-    t_span = (0, 10 * orbital_period)  # 10 orbits
-    t_eval = np.linspace(0, t_span[1], 1000)
-
-    mass = 10.0
-    A_ref = 0.03
-
-    sim_data = {
-        'v_inf': np.sqrt(MU_EARTH / a),
-        'alt_km': 400,
-        'time_str': '2024-01-01 12:00:00',
-        'sigma_N': 0.9,
-        'sigma_T': 0.9,
-        'T_wall': 300,
-        'A_ref': A_ref,
-        'spec_srp': 0.1,
-        'diffuse_srp': 0.5
-    }
-
-    print("\nPropagating 4 scenarios (spherical model):")
-    print("  1. J2 only (baseline)")
-    print("  2. J2 + Drag")
-    print("  3. J2 + SRP")
-    print("  4. J2 + Drag + SRP")
-
-    scenarios = {
-        'J2_only': {'drag': False, 'srp': False},
-        'J2_Drag': {'drag': True, 'srp': False},
-        'J2_SRP': {'drag': False, 'srp': True},
-        'J2_Drag_SRP': {'drag': True, 'srp': True}
-    }
-
-    results = {}
-
-    for name, config in scenarios.items():
-        print(f"\n  Propagating: {name}")
-        params = {
-            'model_type': 'spherical',
-            'sim_data': sim_data,
-            'A_ref': A_ref,
-            'mass': mass,
-            'include_drag': config['drag'],
-            'include_srp': config['srp']
-        }
-        results[name] = propagate_orbit(state0, t_span, params)
-
-    # Calculate altitude decay
-    print("\n" + "=" * 70)
-    print("ALTITUDE DECAY ANALYSIS")
-    print("=" * 70)
-
-    for name, sol in results.items():
-        r_final = sol.sol(t_span[1])[:3]
-        alt_initial = (np.linalg.norm(state0[:3]) - R_EARTH) / 1000
-        alt_final = (np.linalg.norm(r_final) - R_EARTH) / 1000
-        decay = alt_initial - alt_final
-
-        print(f"\n{name}:")
-        print(f"  Initial altitude: {alt_initial:.3f} km")
-        print(f"  Final altitude:   {alt_final:.3f} km")
-        print(f"  Decay:            {decay:.3f} km")
-        print(f"  Decay rate:       {decay / (t_span[1] / 86400):.3f} km/day")
-
-    print("\n" + "=" * 70)
-
-    return results
-
 
 # ==========================
 # MAIN
@@ -395,34 +242,33 @@ if __name__ == "__main__":
     print("ORBIT PROPAGATION COMPARISON - EXAMPLE USAGE")
     print("=" * 70)
 
-    # Run examples
-    print("\nSelect example to run:")
-    print("  1. Basic comparison (default)")
-    print("  2. Custom configuration")
-    print("  3. Drag vs SRP comparison")
-    print("  4. Run all examples")
+    n_orbits = 15#float(input("\nEnter number of orbits: ").strip())
 
-    choice = input("\nEnter choice (1-5) or press Enter for example 1: ").strip()
+    out_dir = "./results/example_basic/"
+    os.makedirs(out_dir, exist_ok=True)
+    name = f"rect_prism_{n_orbits}.pkl"
 
-    if choice == '' or choice == '1':
-        example_basic_comparison()
-
-    elif choice == '2':
-        example_custom_config()
-
-    elif choice == '3':
-        example_drag_vs_srp()
-
-    elif choice == '4':
-        print("\nRunning all examples...")
-        example_basic_comparison()
-        # example_selective_perturbations()  # Commented out - very time consuming
-        example_custom_config()
-        example_drag_vs_srp()
-
+    if not os.path.exists(out_dir + name) or True:
+        results = example_basic_comparison(n_orbits)
+        with open(out_dir + name, 'wb') as f:
+            pickle.dump(results, f)
     else:
-        print("Invalid choice. Running example 1...")
-        example_basic_comparison()
+        with open(out_dir + name, 'rb') as f:
+            results = pickle.load(f)
+            t_eval = results['t_eval']
+        # Generate plots
+        print("\nGenerating comparison plots...")
+        plot_orbit_comparison(results, t_eval,
+                              save_path=os.path.join(out_dir, 'comparison.png'))
+        plot_orbit_hill_frame(results, t_eval, os.path.join(out_dir, 'hill_orbit_comparison.png'))
+
+        if len(results) > 2:  # If ANN model is available
+            plot_error_statistics(results, t_eval,
+                                  save_path=os.path.join(out_dir, 'errors.png'))
+
+        # Print error summary
+        print_error_summary(results, t_eval)
+        plt.show()
 
     print("\n" + "=" * 70)
     print("✓ EXAMPLES COMPLETED")

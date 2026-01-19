@@ -18,6 +18,8 @@ Features:
 
 import os
 import pickle
+import time
+
 import numpy as np
 import torch
 from scipy.integrate import solve_ivp
@@ -26,7 +28,7 @@ import pyvista as pv
 
 from core.compute_perturbation_data import compute_ray_perturbation_step
 from core.optimal_ray_tracing import compute_ray_tracing_fast_optimized
-from core.drag_models import spherical_drag_force, get_dynamic_pressure
+from core.drag_models import spherical_drag_force, get_dynamic_pressure, compute_analytical_prism_step
 from core.srp_models import spherical_srp_force
 from core.ann_tools import (load_ann_models, load_ann_model,
                             ann_predict_force, ann_predict_torque, ann_predict)
@@ -113,26 +115,25 @@ def orbital_derivatives(t, state, params):
     a_2body = -MU_EARTH * r_eci / r_mag ** 3
 
     # J2 perturbation
-    a_j2 = j2_acceleration(r_eci)
+    a_j2 = j2_acceleration(r_eci)*0
 
     # Perturbation acceleration
     a_pert = np.zeros(3)
 
     model_type = params['model_type']
 
-    # CRITICAL: Update altitude for atmospheric density calculations
-    # This must be done before any drag force computation
-    # TODO: attitude
-
     sim_data = params['sim_data']
     sim_data['alt_km'] = (r_mag - R_EARTH) / 1000
     sim_data['v_inf'] = np.linalg.norm(v_eci)
+    if sim_data['alt_km'] < 150:
+        dstate = np.zeros(6)
 
+        return dstate
     if model_type == 'ground_truth':
         # Ray tracing model
         mesh = params['mesh']
-        res_x = params.get('res_x', 500)
-        res_y = params.get('res_y', 500)
+        res_x = params.get('res_x', 50)
+        res_y = params.get('res_y', 50)
         mass = params['mass']
 
         # Velocity in body frame (assume body = ECI for now, can add rotation if needed)
@@ -154,7 +155,11 @@ def orbital_derivatives(t, state, params):
                 a_pert += F_drag_total / mass
             if params['include_srp']:
                 a_pert += F_srp_total / mass
-
+    elif model_type == 'ground_truth_theory':
+        v_body = -v_eci
+        mass = params['mass']
+        F_drag_total = compute_analytical_prism_step(v_body, sim_data, params)
+        a_pert += F_drag_total / mass
     elif model_type == 'spherical':
         # Spherical approximation
         A_ref = params['A_ref']
@@ -184,8 +189,8 @@ def orbital_derivatives(t, state, params):
         # Predict drag force and torque
         if params['include_drag']:
             q_ = get_dynamic_pressure(v_body, sim_data['alt_km'], sim_data['time_str'])
-            F_drag = q_ * ann_predict_force(v_body, ann_models.get('drag_f'), device)
-            T_drag = q_ * ann_predict_torque(v_body, ann_models.get('drag_t'), device)
+            F_drag = q_ * ann_predict_force(v_body, ann_models.get('drag_f'), device) * sim_data.get("scale_shape", 1.0)
+            T_drag = q_ * ann_predict_torque(v_body, ann_models.get('drag_t'), device) * sim_data.get("scale_shape", 1.0)
 
             a_pert += F_drag / mass
             # Note: Torque doesn't affect translational motion directly
@@ -200,7 +205,8 @@ def orbital_derivatives(t, state, params):
             T_srp = P_SRP * ann_predict_torque(sun_dir, ann_models.get('srp_t'), device)
             a_pert += F_srp / mass
             # Note: Torque doesn't affect translational motion directly
-
+    elif model_type == "nominal_j2":
+        a_pert = np.zeros(3)
     # Total acceleration
     a_total = a_2body + a_j2 + a_pert
 
@@ -214,11 +220,11 @@ def orbital_derivatives(t, state, params):
 # ORBIT PROPAGATION
 # ==========================
 
-def propagate_orbit(state0, t_span, params, method='DOP853', rtol=1e-9, atol=1e-12,
+def propagate_orbit(state0, t_span, params, method='RK45', rtol=1e-12, atol=1e-15,
                     show_progress=True, desc="Propagating orbit"):
     """
     Propagate orbit with specified perturbations
-
+    RK45, DOP853
     Parameters:
     -----------
     state0 : np.ndarray (6,)
@@ -296,304 +302,40 @@ def propagate_orbit(state0, t_span, params, method='DOP853', rtol=1e-9, atol=1e-
 
 
 def print_error_summary(results_dict, t_eval):
-    """Print numerical error summary"""
-    print("\n" + "=" * 70)
-    print("ERROR SUMMARY")
-    print("=" * 70)
-
-    r_true = results_dict['ground_truth'].sol(t_eval)[:3, :].T
-    v_true = results_dict['ground_truth'].sol(t_eval)[3:, :].T
-
-    for model_name in ['spherical', 'ann']:
-        if model_name not in results_dict:
+    """Print error summary for all altitudes"""
+    altitudes = sorted([k for k in results_dict.keys() if k != 't_eval'])
+    
+    for alt in altitudes:
+        print(f"\n{'='*70}\nALTITUDE: {alt} km\n{'='*70}")
+        
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        
+        if 'ground_truth' not in alt_results:
             continue
 
-        r_test = results_dict[model_name].sol(t_eval)[:3, :].T
-        v_test = results_dict[model_name].sol(t_eval)[3:, :].T
+        r_true = alt_results['ground_truth'].sol(alt_t_eval)[:3, :].T
+        v_true = alt_results['ground_truth'].sol(alt_t_eval)[3:, :].T
 
-        pos_error = compute_position_error(r_true, r_test)
-        vel_error = compute_velocity_error(v_true, v_test)
+        for model_name in ['spherical', 'ann']:
+            if model_name not in alt_results:
+                continue
 
-        print(f"\n{model_name.upper()} MODEL:")
-        print(f"  Position Error:")
-        print(f"    Mean: {np.mean(pos_error) / 1000:.3f} km")
-        print(f"    Max:  {np.max(pos_error) / 1000:.3f} km")
-        print(f"    RMS:  {np.sqrt(np.mean(pos_error ** 2)) / 1000:.3f} km")
-        print(f"  Velocity Error:")
-        print(f"    Mean: {np.mean(vel_error):.6f} m/s")
-        print(f"    Max:  {np.max(vel_error):.6f} m/s")
-        print(f"    RMS:  {np.sqrt(np.mean(vel_error ** 2)):.6f} m/s")
+            r_test = alt_results[model_name].sol(alt_t_eval)[:3, :].T
+            v_test = alt_results[model_name].sol(alt_t_eval)[3:, :].T
 
-    print("=" * 70)
+            pos_error = compute_position_error(r_true, r_test)
+            vel_error = compute_velocity_error(v_true, v_test)
 
-
-# ==========================
-# MAIN EXECUTION
-# ==========================
-
-def main():
-    """Main execution function"""
+            print(f"\n{model_name.upper()}:")
+            print(f"  Position Error (final): {pos_error[-1]/1000:.4f} km")
+            print(f"  Position Error (mean):  {np.mean(pos_error)/1000:.4f} km")
+            print(f"  Position Error (max):   {np.max(pos_error)/1000:.4f} km")
+            print(f"  Velocity Error (final): {vel_error[-1]:.6f} m/s")
+            print(f"  Velocity Error (mean):  {np.mean(vel_error):.6f} m/s")
+            print(f"  Velocity Error (max):   {np.max(vel_error):.6f} m/s")
 
     print("\n" + "=" * 70)
-    print("ORBIT PROPAGATION COMPARISON")
-    print("=" * 70)
-
-    # ==========================
-    # CONFIGURATION
-    # ==========================
-
-    # Output directory
-    OUT_DIR = "./results/orbit_comparison/"
-    os.makedirs(OUT_DIR, exist_ok=True)
-
-    # Mesh file (for ground truth)
-    MESH_PATH = "./mesh/spacecraft.stl"  # Update with actual path
-
-    # ANN model path
-    MODEL_PATH = "/mnt/user-data/uploads/model.pkl"
-
-    # Simulation parameters
-    INCLUDE_DRAG = True
-    INCLUDE_SRP = False
-
-    # Initial orbital elements (example: LEO)
-    a = R_EARTH + 400e3  # Semi-major axis [m]
-    e = 0.001  # Eccentricity
-    i = np.deg2rad(51.6)  # Inclination [rad]
-    RAAN = np.deg2rad(0)  # Right ascension of ascending node [rad]
-    omega = np.deg2rad(0)  # Argument of perigee [rad]
-    nu = np.deg2rad(0)  # True anomaly [rad]
-
-    # Convert to Cartesian state
-    p = a * (1 - e ** 2)
-    r_mag = p / (1 + e * np.cos(nu))
-
-    # Perifocal frame
-    r_pf = r_mag * np.array([np.cos(nu), np.sin(nu), 0])
-    v_pf = np.sqrt(MU_EARTH / p) * np.array([-np.sin(nu), e + np.cos(nu), 0])
-
-    # Rotation matrices
-    R3_RAAN = np.array([
-        [np.cos(RAAN), -np.sin(RAAN), 0],
-        [np.sin(RAAN), np.cos(RAAN), 0],
-        [0, 0, 1]
-    ])
-
-    R1_i = np.array([
-        [1, 0, 0],
-        [0, np.cos(i), -np.sin(i)],
-        [0, np.sin(i), np.cos(i)]
-    ])
-
-    R3_omega = np.array([
-        [np.cos(omega), -np.sin(omega), 0],
-        [np.sin(omega), np.cos(omega), 0],
-        [0, 0, 1]
-    ])
-
-    # Transform to ECI
-    Q = R3_RAAN @ R1_i @ R3_omega
-    r0 = Q @ r_pf
-    v0 = Q @ v_pf
-
-    state0 = np.concatenate([r0, v0])
-
-    print(f"\nInitial State:")
-    print(f"  Position: {r0 / 1000} km")
-    print(f"  Velocity: {v0} m/s")
-    print(f"  Altitude: {(np.linalg.norm(r0) - R_EARTH) / 1000:.2f} km")
-
-    # Propagation time
-    n_orbits = 2
-    orbital_period = 2 * np.pi * np.sqrt(a ** 3 / MU_EARTH)
-    t_final = n_orbits * orbital_period
-    t_span = (0, t_final)
-    t_eval = np.linspace(0, t_final, 500)
-
-    print(f"\nPropagation:")
-    print(f"  Duration: {n_orbits} orbits ({t_final / 3600:.2f} hours)")
-    print(f"  Orbital period: {orbital_period / 60:.2f} minutes")
-
-    # Spacecraft parameters
-    mass = 10.0  # kg
-    A_ref = (3 + 2 + 1) / 2
-
-    # Simulation data for atmospheric/SRP models
-    sim_data = {
-        'v_inf': 7700,  # m/s (approximate LEO velocity)
-        'alt_km': 400,
-        'time_str': '2024-01-01 12:00:00',
-        'sigma_N': 0.9,
-        'sigma_T': 0.9,
-        'T_wall': 300,  # K
-        'A_ref': A_ref,
-        'spec_srp': 0.1,
-        'diffuse_srp': 0.5
-    }
-
-    print(f"\nSpacecraft:")
-    print(f"  Mass: {mass} kg")
-    print(f"  Reference area: {A_ref} m^2")
-    print(f"  Altitude: {sim_data['alt_km']} km")
-
-    print(f"\nPerturbations:")
-    print(f"  Drag: {'YES' if INCLUDE_DRAG else 'NO'}")
-    print(f"  SRP: {'YES' if INCLUDE_SRP else 'NO'}")
-    print(f"  J2: YES (always included)")
-
-    # ==========================
-    # LOAD MODELS
-    # ==========================
-
-    print("\nLoading models...")
-
-    # Load mesh for ground truth
-    mesh = None
-    if os.path.exists(MESH_PATH):
-        mesh = pv.read(MESH_PATH)
-        mesh = mesh.triangulate().clean()
-        mesh = mesh.subdivide(1, subfilter='linear').clean()
-        print(f"  Mesh loaded: {MESH_PATH}")
-    else:
-        print(f"  Warning: Mesh not found at {MESH_PATH}")
-        print(f"  Creating rectangular prism mesh for testing...")
-        # Create rectangular prism mesh as fallback
-        mesh = pv.Cube(x_length=3, y_length=1, z_length=2)
-        mesh = mesh.triangulate().clean()
-        mesh = mesh.subdivide(1, subfilter='linear').clean()
-
-    # Load ANN models (4 separate models: drag_f, drag_t, srp_f, srp_t)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Define model paths
-    MODEL_DIR_DRAG_F = "./results/optimization/rect_prism_data_1000_sample_10000/config_21/"
-    MODEL_DIR_DRAG_T = "./results/optimization/rect_prism_data_1000_sample_10000/config_22/"
-    MODEL_DIR_SRP_F = "./results/optimization/rect_prism_data_1000_sample_10000/config_23/"
-    MODEL_DIR_SRP_T = "./results/optimization/rect_prism_data_1000_sample_10000/config_24/"
-
-    model_paths = {
-        'drag_f': os.path.join(MODEL_DIR_DRAG_F, 'model_drag_f.pkl'),
-        'drag_t': os.path.join(MODEL_DIR_DRAG_T, 'model_drag_t.pkl'),
-        'srp_f': os.path.join(MODEL_DIR_SRP_F, 'model_srp_f.pkl'),
-        'srp_t': os.path.join(MODEL_DIR_SRP_T, 'model_srp_t.pkl')
-    }
-
-    ann_models = load_ann_models(model_paths, device)
-
-    if ann_models:
-        print(f"  Device: {device}")
-
-    # ==========================
-    # PROPAGATE ORBITS
-    # ==========================
-
-    results_dict = {}
-
-    print("\n" + "=" * 70)
-    print("PROPAGATING ORBITS")
-    print("=" * 70)
-
-    # 1. Ground Truth (Ray Tracing)
-    print("\n1. Ground Truth (Ray Tracing)...")
-    params_gt = {
-        'model_type': 'ground_truth',
-        'mesh': mesh,
-        'sim_data': sim_data,
-        'A_ref': A_ref,
-        'mass': mass,
-        'include_drag': INCLUDE_DRAG,
-        'include_srp': INCLUDE_SRP,
-        'res_x': 100,  # Reduced resolution for faster computation
-        'res_y': 100
-    }
-
-    sol_gt = propagate_orbit(state0, t_span, params_gt,
-                             show_progress=True,
-                             desc="Ground Truth (Ray Tracing)")
-    results_dict['ground_truth'] = sol_gt
-    print(f"   Status: {sol_gt.message}")
-    print(f"   Function evaluations: {sol_gt.nfev}")
-
-    # 2. Spherical Model
-    print("\n2. Spherical Model...")
-    params_sph = {
-        'model_type': 'spherical',
-        'sim_data': sim_data,
-        'A_ref': A_ref,
-        'mass': mass,
-        'include_drag': INCLUDE_DRAG,
-        'include_srp': INCLUDE_SRP
-    }
-
-    sol_sph = propagate_orbit(state0, t_span, params_sph,
-                              show_progress=True,
-                              desc="Spherical Model")
-    results_dict['spherical'] = sol_sph
-    print(f"   Status: {sol_sph.message}")
-    print(f"   Function evaluations: {sol_sph.nfev}")
-
-    # 3. ANN Model
-    if ann_models is not None:
-        print("\n3. ANN Model...")
-        params_ann = {
-            'model_type': 'ann',
-            'ann_models': ann_models,
-            'mass': mass,
-            'include_drag': INCLUDE_DRAG,
-            'include_srp': INCLUDE_SRP,
-            'device': device
-        }
-
-        sol_ann = propagate_orbit(state0, t_span, params_ann,
-                                  show_progress=True,
-                                  desc="ANN Model")
-        results_dict['ann'] = sol_ann
-        print(f"   Status: {sol_ann.message}")
-        print(f"   Function evaluations: {sol_ann.nfev}")
-    else:
-        print("\n3. ANN Model: SKIPPED (models not loaded)")
-
-    # ==========================
-    # ERROR ANALYSIS
-    # ==========================
-
-    print_error_summary(results_dict, t_eval)
-
-    # ==========================
-    # VISUALIZATION
-    # ==========================
-
-    print("\n" + "=" * 70)
-    print("GENERATING PLOTS")
-    print("=" * 70)
-
-    plot_orbit_comparison(results_dict, t_eval,
-                          save_path=os.path.join(OUT_DIR, 'orbit_comparison.png'))
-
-    plot_error_statistics(results_dict, t_eval,
-                          save_path=os.path.join(OUT_DIR, 'error_statistics.png'))
-
-    # Save results
-    results_file = os.path.join(OUT_DIR, 'propagation_results.pkl')
-    with open(results_file, 'wb') as f:
-        pickle.dump({
-            'results_dict': results_dict,
-            't_eval': t_eval,
-            'state0': state0,
-            'params': {
-                'mass': mass,
-                'A_ref': A_ref,
-                'sim_data': sim_data,
-                'include_drag': INCLUDE_DRAG,
-                'include_srp': INCLUDE_SRP
-            }
-        }, f)
-    print(f"\nResults saved to: {results_file}")
-
-    print("\n" + "=" * 70)
-    print("✓ ORBIT PROPAGATION COMPARISON COMPLETED")
-    print("=" * 70)
-
 
 if __name__ == "__main__":
-    main()
+    pass

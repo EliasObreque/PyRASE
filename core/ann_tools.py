@@ -35,7 +35,10 @@ COL_IN = ['r_x', 'r_y', 'r_z']
 COL_OUT_DRAG_F = ['Fx_drag', 'Fy_drag', 'Fz_drag']
 COL_OUT_DRAG_T = ['Tx_drag', 'Ty_drag', 'Tz_drag']
 COL_OUT_DRAG = COL_OUT_DRAG_F + COL_OUT_DRAG_T
-COL_OUT_SRP = ['Fx_srp', 'Fy_srp', 'Fz_srp', 'Tx_srp', 'Ty_srp', 'Tz_srp']
+
+COL_OUT_SRP_F = ['Fx_srp', 'Fy_srp', 'Fz_srp']
+COL_OUT_SRP_T = ['Tx_srp', 'Ty_srp', 'Tz_srp']
+COL_OUT_SRP = COL_OUT_SRP_F + COL_OUT_SRP_T
 COL_OUT_ALL = COL_OUT_DRAG_F + COL_OUT_DRAG_T + COL_OUT_SRP
 
 
@@ -227,7 +230,7 @@ def prepare_data_for_training(data_mesh, output_type='drag', batch_size=32, seed
     
     # 2. Non-dimensionalize
     df = factor_targets(df, data_mesh['sim_data'])
-    
+    print("-----------------------------------",output_type )
     # 3. Select outputs
     if output_type == 'drag_f':
         col_out = COL_OUT_DRAG_F
@@ -235,6 +238,10 @@ def prepare_data_for_training(data_mesh, output_type='drag', batch_size=32, seed
         col_out = COL_OUT_DRAG_T
     elif output_type == "drag":
         col_out = COL_OUT_DRAG
+    elif output_type == 'srp_f':
+        col_out = COL_OUT_SRP_F
+    elif output_type == 'srp_t':
+        col_out = COL_OUT_SRP_T
     elif output_type == 'srp':
         col_out = COL_OUT_SRP
     elif output_type == 'all':

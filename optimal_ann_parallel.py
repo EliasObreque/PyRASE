@@ -50,7 +50,7 @@ mpl.rcParams.update({
 
 # Data paths
 MAIN_FOLDER = "./results/data/"
-DATA_PATH = MAIN_FOLDER + "align_data_1000_sample_2000"
+DATA_PATH = MAIN_FOLDER + "aqua_b_data_1000_sample_2000"
 
 # Model type
 PERTURBATION_STATE = 'srp_t'

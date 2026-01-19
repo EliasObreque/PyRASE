@@ -8,18 +8,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 import matplotlib as mpl
-
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
 mpl.rcParams.update({
     "font.family": "serif",                     # generic family
     "font.serif": ["Times New Roman", "Times"], # try exact TNR first
-    "font.size": 18,                            # default text size
-    "axes.titlesize": 18,                       # axes title
-    "axes.labelsize": 18,                       # x/y labels
-    "xtick.labelsize": 18,                      # tick labels
-    "ytick.labelsize": 18,
-    "legend.fontsize": 16,
-    "figure.titlesize": 18,
+    "font.size": 14,                            # default text size
+    "axes.titlesize": 14,                       # axes title
+    "axes.labelsize": 14,                       # x/y labels
+    "xtick.labelsize": 14,                      # tick labels
+    "ytick.labelsize": 14,
+    "legend.fontsize": 14,
+    "figure.titlesize": 14,
     # Math text configured to look like Times
     "mathtext.fontset": "stix",                 # STIX resembles Times
     "mathtext.rm": "Times New Roman",
@@ -991,47 +991,125 @@ def plot_predictions_by_axis(P_real, Y_real, force, torque, title_prefix=""):
     return fig1, fig2
 
 
-def plot_orbit_comparison(results_dict, t_eval, save_path='orbit_comparison.png'):
-    """
-    Plot orbit comparison between models
+def get_hill_frame_ON(rc_, vc_):
+    vec_or = rc_ / np.linalg.norm(rc_)
+    h = np.cross(rc_, vc_)
+    f_dot = np.linalg.norm(h) / np.linalg.norm(rc_) ** 2
+    vec_oh = h / np.linalg.norm(h)
+    vec_ot = np.cross(vec_oh, vec_or)
+    on_ = np.array([vec_or, vec_ot, vec_oh])
+    return on_
 
-    Parameters:
-    -----------
-    results_dict : dict
-        {
-            'ground_truth': solution,
-            'spherical': solution,
-            'ann': solution
-        }
-    t_eval : np.ndarray
-        Time vector [s]
-    save_path : str
-        Output file path
-    """
-    # Figure 1: 3D orbit + error components (2x2 layout)
-    fig = plt.figure(figsize=(8, 7))
 
+def plot_orbit(results_dict, t_eval):
+    fig = plt.figure(figsize=(12, 7))
     colors = {
+        'nominal_j2': 'black',
         'ground_truth': 'blue',
         'spherical': 'red',
         'ann': 'green'
     }
 
     labels = {
+        'nominal_j2': 'Nominal J2',
         'ground_truth': 'Ground Truth (Ray Tracing)',
         'spherical': 'Spherical Model',
         'ann': 'ANN Model'
     }
 
     # 3D orbit plot
-    ax1 = fig.add_subplot(2, 2, 1, projection='3d')
-
+    ax1 = fig.add_subplot(1, 1, 1, projection='3d')
     for model_name, sol in results_dict.items():
+        if model_name == 't_eval':
+            continue
         r = sol.sol(t_eval)[:3, :].T / 1000  # Convert to km
+
         ax1.plot(r[:, 0], r[:, 1], r[:, 2],
                  color=colors[model_name],
                  label=labels[model_name],
                  linewidth=1.5, alpha=0.8)
+    ax1.set_xlabel('X [km]')
+    ax1.set_ylabel('Y [km]')
+    ax1.set_zlabel('Z [km]')
+    ax1.set_title('Orbit Trajectories')
+    ax1.grid(True, alpha=0.3)
+    plt.legend(loc='upper left')
+    plt.tight_layout()
+
+def plot_altitude(results_dict, t_eval, save_path='altitude_comparison.png'):
+    R_EARTH = 6378137.0  # m
+
+    fig = plt.figure(figsize=(10, 5))
+    colors = {
+        'nominal_j2': 'black',
+        'ground_truth': 'blue',
+        'spherical': 'red',
+        'ann': 'green'
+    }
+
+    labels = {
+        'nominal_j2': 'Nominal J2',
+        'ground_truth': 'Ground Truth (Ray Tracing)',
+        'spherical': 'Spherical Model',
+        'ann': 'ANN Model'
+    }
+    plt.xlabel("Time [h]")
+    plt.ylabel("Altitude [km]")
+    for model_name, sol in results_dict.items():
+        if model_name == 't_eval':
+            continue
+        r = sol.sol(t_eval)[:3, :].T / 1000  # Convert to km
+        r_alt = np.linalg.norm(r, axis=1) - R_EARTH /1000
+
+        plt.plot(t_eval/ 3600, r_alt,
+                 label=labels[model_name],
+                 linewidth=1.5, alpha=0.8)
+    plt.grid()
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+
+
+def _get_data(sol, t_eval):
+    """Get state data from OdeResult"""
+    return sol.sol(t_eval)
+
+
+def plot_orbit_comparison(results_dict, t_eval, save_path='orbit_comparison.png'):
+    """One plot showing all altitudes together"""
+    altitudes = sorted([k for k in results_dict.keys() if k != 't_eval'])
+    colors_alt = {'300': '#1f77b4', '400': '#ff7f0e', '500': '#2ca02c'}
+    
+    # Figure 1: 2x2 grid
+    fig = plt.figure(figsize=(14, 10))
+
+    # 3D orbit - ALL models on ONE plot
+    ax1 = fig.add_subplot(2, 2, 1, projection='3d')
+    
+    for alt in altitudes:
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        
+        # Plot ground truth for this altitude
+        if 'ground_truth' in alt_results:
+            r = alt_results['ground_truth'].sol(alt_t_eval)[:3, :].T / 1000
+            ax1.plot(r[:, 0], r[:, 1], r[:, 2], '-',
+                    color=colors_alt[alt], linewidth=2, alpha=0.8,
+                    label=f'GT {alt}km')
+        
+        # Plot spherical for this altitude
+        if 'spherical' in alt_results:
+            r = alt_results['spherical'].sol(alt_t_eval)[:3, :].T / 1000
+            ax1.plot(r[:, 0], r[:, 1], r[:, 2], '--',
+                    color=colors_alt[alt], linewidth=1.5, alpha=0.6,
+                    label=f'Sph {alt}km')
+        
+        # Plot ANN for this altitude
+        if 'ann' in alt_results:
+            r = alt_results['ann'].sol(alt_t_eval)[:3, :].T / 1000
+            ax1.plot(r[:, 0], r[:, 1], r[:, 2], ':',
+                    color=colors_alt[alt], linewidth=1.5, alpha=0.6,
+                    label=f'ANN {alt}km')
 
     # Earth sphere
     u = np.linspace(0, 2 * np.pi, 50)
@@ -1040,209 +1118,320 @@ def plot_orbit_comparison(results_dict, t_eval, save_path='orbit_comparison.png'
     y_earth = R_EARTH / 1000 * np.outer(np.sin(u), np.sin(v))
     z_earth = R_EARTH / 1000 * np.outer(np.ones(np.size(u)), np.cos(v))
     ax1.plot_surface(x_earth, y_earth, z_earth, color='lightblue', alpha=0.3)
-
-    ax1.set_xlabel('X [km]', fontsize=10)
-    ax1.set_ylabel('Y [km]', fontsize=10)
-    ax1.set_zlabel('Z [km]', fontsize=10)
-    ax1.set_title('Orbit Trajectories', fontsize=11)
+    ax1.set_xlabel('X [km]')
+    ax1.set_ylabel('Y [km]')
+    ax1.set_zlabel('Z [km]')
+    ax1.set_title('Orbit Trajectories')
     ax1.legend(fontsize=8)
     ax1.grid(True, alpha=0.3)
 
-    # Position error vs time
+    # Position error vs time - Spherical
     ax2 = fig.add_subplot(2, 2, 2)
-
-    r_true = results_dict['ground_truth'].sol(t_eval)[:3, :].T
-
-    for model_name in ['spherical', 'ann']:
-        if model_name in results_dict:
-            r_test = results_dict[model_name].sol(t_eval)[:3, :].T
+    for alt in altitudes:
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        if 'ground_truth' in alt_results and 'spherical' in alt_results:
+            r_true = alt_results['ground_truth'].sol(alt_t_eval)[:3, :].T
+            r_test = alt_results['spherical'].sol(alt_t_eval)[:3, :].T
             pos_error = compute_position_error(r_true, r_test)
-            ax2.plot(t_eval / 3600, pos_error / 1000,
-                     color=colors[model_name],
-                     label=labels[model_name],
-                     linewidth=1.5)
-
-    ax2.set_xlabel('Time [hours]', fontsize=10)
-    ax2.set_ylabel('Position Error [km]', fontsize=10)
-    ax2.set_title('Position Error vs Time', fontsize=11)
-    ax2.legend(fontsize=8)
+            ax2.plot(alt_t_eval / 3600, pos_error / 1000, color=colors_alt[alt],
+                    label=f'{alt} km', linewidth=2)
+    ax2.set_xlabel('Time [hours]')
+    ax2.set_ylabel('Position Error [km]')
+    ax2.set_title('Position Error vs Time')
+    ax2.legend()
     ax2.grid(True, alpha=0.3)
     ax2.set_yscale('log')
-    ax2.tick_params(labelsize=9)
 
-    # Velocity error vs time
+    # Velocity error vs time - Spherical
     ax3 = fig.add_subplot(2, 2, 3)
-
-    v_true = results_dict['ground_truth'].sol(t_eval)[3:, :].T
-
-    for model_name in ['spherical', 'ann']:
-        if model_name in results_dict:
-            v_test = results_dict[model_name].sol(t_eval)[3:, :].T
+    for alt in altitudes:
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        if 'ground_truth' in alt_results and 'spherical' in alt_results:
+            v_true = alt_results['ground_truth'].sol(alt_t_eval)[3:, :].T
+            v_test = alt_results['spherical'].sol(alt_t_eval)[3:, :].T
             vel_error = compute_velocity_error(v_true, v_test)
-            ax3.plot(t_eval / 3600, vel_error,
-                     color=colors[model_name],
-                     label=labels[model_name],
-                     linewidth=1.5)
-
-    ax3.set_xlabel('Time [hours]', fontsize=10)
-    ax3.set_ylabel('Velocity Error [m/s]', fontsize=10)
-    ax3.set_title('Velocity Error vs Time', fontsize=11)
-    ax3.legend(fontsize=8)
+            ax3.plot(alt_t_eval / 3600, vel_error, color=colors_alt[alt],
+                    label=f'{alt} km', linewidth=2)
+    ax3.set_xlabel('Time [hours]')
+    ax3.set_ylabel('Velocity Error [m/s]')
+    ax3.set_title('Velocity Error vs Time')
+    ax3.legend()
     ax3.grid(True, alpha=0.3)
     ax3.set_yscale('log')
-    ax3.tick_params(labelsize=9)
 
-    # Error components
+    # Position error components
     ax4 = fig.add_subplot(2, 2, 4)
-
-    for model_name in ['spherical', 'ann']:
-        if model_name in results_dict:
-            r_test = results_dict[model_name].sol(t_eval)[:3, :].T
-            error_vec = r_test - r_true
-
-            # Radial, along-track, cross-track errors
-            for i, component in enumerate(['X', 'Y', 'Z']):
-                ax4.plot(t_eval / 3600, error_vec[:, i] / 1000,
-                         linestyle='--' if model_name == 'ann' else '-',
-                         label=f'{labels[model_name]} - {component}',
-                         linewidth=1.2, alpha=0.7)
-
-    ax4.set_xlabel('Time [hours]', fontsize=10)
-    ax4.set_ylabel('Position Error Components [km]', fontsize=10)
-    ax4.set_title('Position Error Components', fontsize=11)
-    ax4.legend(fontsize=7, ncol=2)
+    for alt in altitudes:
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        if 'ground_truth' in alt_results:
+            r_true = alt_results['ground_truth'].sol(alt_t_eval)[:3, :].T
+            
+            if 'spherical' in alt_results:
+                r_test = alt_results['spherical'].sol(alt_t_eval)[:3, :].T
+                error_vec = r_test - r_true
+                for i, comp in enumerate(['X', 'Y', 'Z']):
+                    ax4.plot(alt_t_eval / 3600, error_vec[:, i] / 1000, '-',
+                            color=colors_alt[alt], linewidth=1.2, alpha=0.7,
+                            label=f'Sph-{comp} {alt}km' if i == 0 else '')
+            
+            if 'ann' in alt_results:
+                r_test = alt_results['ann'].sol(alt_t_eval)[:3, :].T
+                error_vec = r_test - r_true
+                for i, comp in enumerate(['X', 'Y', 'Z']):
+                    ax4.plot(alt_t_eval / 3600, error_vec[:, i] / 1000, '--',
+                            color=colors_alt[alt], linewidth=1.2, alpha=0.7,
+                            label=f'ANN-{comp} {alt}km' if i == 0 else '')
+    ax4.set_xlabel('Time [hours]')
+    ax4.set_ylabel('Position Error Components [km]')
+    ax4.set_title('Position Error Components')
+    ax4.legend(fontsize=8, ncol=2)
     ax4.grid(True, alpha=0.3)
-    ax4.tick_params(labelsize=9)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
-    plt.close()
+    print(f"Orbit comparison saved to: {save_path}")
 
-    print(f"Orbit comparison plot saved to: {save_path}")
-
-    # Figure 2: Position and Velocity Errors (1x2 layout)
-    fig2, (ax_pos, ax_vel) = plt.subplots(1, 2, figsize=(8, 3.5))
-
+def plot_pos_vel_error(results_dict, t_eval, save_path='orbit_comparison_error.png'):
+    """Position and velocity errors with two legend boxes"""
+    from matplotlib.lines import Line2D
+    
+    fig, (ax_pos, ax_vel) = plt.subplots(1, 2, figsize=(10, 4))
+    colors_alt = {'300': '#D87F7F', '400': '#A4B86E', '500': '#6B8CD4'}
+    altitudes = sorted([k for k in results_dict.keys() if k != 't_eval'])
+    
     # Position error
-    for model_name in ['spherical', 'ann']:
-        if model_name in results_dict:
-            r_test = results_dict[model_name].sol(t_eval)[:3, :].T
+    for alt in altitudes:
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        if 'ground_truth' in alt_results and 'spherical' in alt_results:
+            r_true = alt_results['ground_truth'].sol(alt_t_eval)[:3, :].T
+            r_test = alt_results['spherical'].sol(alt_t_eval)[:3, :].T
             pos_error = compute_position_error(r_true, r_test)
-            ax_pos.plot(t_eval / 3600, pos_error / 1000,
-                        color=colors[model_name],
-                        label=labels[model_name],
-                        linewidth=1.5)
-
-    ax_pos.set_xlabel('Time [hours]', fontsize=10)
-    ax_pos.set_ylabel('Position Error [km]', fontsize=10)
-    ax_pos.set_title('Position Error', fontsize=11)
-    ax_pos.legend(fontsize=8)
-    ax_pos.grid(True, alpha=0.3)
+            ax_pos.plot(alt_t_eval / 3600, pos_error / 1000, '--',
+                       color=colors_alt[alt], linewidth=1.5)
+        if 'ground_truth' in alt_results and 'ann' in alt_results:
+            r_true = alt_results['ground_truth'].sol(alt_t_eval)[:3, :].T
+            r_test = alt_results['ann'].sol(alt_t_eval)[:3, :].T
+            pos_error = compute_position_error(r_true, r_test)
+            ax_pos.plot(alt_t_eval / 3600, pos_error / 1000, '-',
+                       color=colors_alt[alt], linewidth=1.5)
+    
+    ax_pos.set_xlabel('Time [hours]')
+    ax_pos.set_ylabel('Position Error [km]')
+    ax_pos.set_title('Position Error')
     ax_pos.set_yscale('log')
-    ax_pos.tick_params(labelsize=9)
-
+    ax_pos.grid(True, alpha=0.3)
+    
+    # Create two legend boxes for position
+    legend1_elements = [Line2D([0], [0], color=colors_alt[alt], lw=2, label=f'{alt} km') 
+                       for alt in altitudes]
+    legend2_elements = [Line2D([0], [0], color='black', lw=2, linestyle='-', label='ANN'),
+                       Line2D([0], [0], color='black', lw=2, linestyle='--', label='Spherical')]
+    
+    legend1 = ax_pos.legend(handles=legend1_elements, loc='upper left', title='Altitude')
+    ax_pos.add_artist(legend1)
+    ax_pos.legend(handles=legend2_elements, loc='lower right', title='Model')
+    
     # Velocity error
-    for model_name in ['spherical', 'ann']:
-        if model_name in results_dict:
-            v_test = results_dict[model_name].sol(t_eval)[3:, :].T
+    for alt in altitudes:
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        if 'ground_truth' in alt_results and 'spherical' in alt_results:
+            v_true = alt_results['ground_truth'].sol(alt_t_eval)[3:, :].T
+            v_test = alt_results['spherical'].sol(alt_t_eval)[3:, :].T
             vel_error = compute_velocity_error(v_true, v_test)
-            ax_vel.plot(t_eval / 3600, vel_error,
-                        color=colors[model_name],
-                        label=labels[model_name],
-                        linewidth=1.5)
-
-    ax_vel.set_xlabel('Time [hours]', fontsize=10)
-    ax_vel.set_ylabel('Velocity Error [m/s]', fontsize=10)
-    ax_vel.set_title('Velocity Error', fontsize=11)
-    ax_vel.legend(fontsize=8)
-    ax_vel.grid(True, alpha=0.3)
+            ax_vel.plot(alt_t_eval / 3600, vel_error, '--',
+                       color=colors_alt[alt], linewidth=1.5)
+        if 'ground_truth' in alt_results and 'ann' in alt_results:
+            v_true = alt_results['ground_truth'].sol(alt_t_eval)[3:, :].T
+            v_test = alt_results['ann'].sol(alt_t_eval)[3:, :].T
+            vel_error = compute_velocity_error(v_true, v_test)
+            ax_vel.plot(alt_t_eval / 3600, vel_error, '-',
+                       color=colors_alt[alt], linewidth=1.5)
+    
+    ax_vel.set_xlabel('Time [hours]')
+    ax_vel.set_ylabel('Velocity Error [m/s]')
+    ax_vel.set_title('Velocity Error')
     ax_vel.set_yscale('log')
-    ax_vel.tick_params(labelsize=9)
-
+    ax_vel.grid(True, alpha=0.3)
+    
+    # Create two legend boxes for velocity
+    legend1 = ax_vel.legend(handles=legend1_elements, loc='lower left', title='Altitude')
+    ax_vel.add_artist(legend1)
+    ax_vel.legend(handles=legend2_elements, loc='lower right', title='Model')
+    
     plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+    print(f"Error comparison plot saved to: {save_path}")
 
-    # Save second figure
-    save_path_2 = save_path.replace('.png', '_errors.png')
-    plt.savefig(save_path_2, dpi=300, bbox_inches='tight', facecolor='white')
-    plt.close()
 
-    print(f"Error comparison plot saved to: {save_path_2}")
-
+def plot_orbit_hill_frame(results_dict, t_eval, save_path='hill_orbit_comparison.png'):
+    """Hill frame 3D plot - relative position with time colormap"""
+    from mpl_toolkits.mplot3d.art3d import Line3DCollection
+    
+    altitudes = sorted([k for k in results_dict.keys() if k != 't_eval'])
+    colors_alt = {'300': '#1f77b4', '400': '#ff7f0e', '500': '#2ca02c'}
+    
+    fig = plt.figure(figsize=(10, 5))
+    fig.suptitle("Relative Position - Hill Frame")
+    altitude_hatch = {'300': '*', '400': '-', '500': 'o'}
+    for i, model_name in enumerate(['spherical', 'ann']):
+        ax = fig.add_subplot(1, 2, i + 1, projection='3d')
+        
+        for alt in altitudes:
+            alt_results = results_dict[alt]
+            alt_t_eval = alt_results.get('t_eval', t_eval)
+            
+            if 'ground_truth' not in alt_results or model_name not in alt_results:
+                continue
+            
+            r_true = alt_results['ground_truth'].sol(alt_t_eval)[:3, :].T
+            v_true = alt_results['ground_truth'].sol(alt_t_eval)[3:, :].T
+            r_test = alt_results[model_name].sol(alt_t_eval)[:3, :].T
+            
+            rel_pos = r_test - r_true
+            rho_list = np.array([get_hill_frame_ON(r_c, v_c) @ r_d 
+                                for r_d, r_c, v_c in zip(rel_pos, r_true, v_true)]) / 1000
+            
+            points = rho_list.reshape(-1, 1, 3)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
+            lc = Line3DCollection(segments, cmap='inferno', linewidth=1.5, hatch=altitude_hatch[alt])
+            lc.set_array(alt_t_eval[:-1] / 3600)
+            ax.add_collection(lc)
+        
+        labels_model = {'spherical': 'Spherical Model', 'ann': 'ANN Model'}
+        ax.set_title(labels_model[model_name])
+        ax.set_xlabel('Radial [km]')
+        ax.set_ylabel('Along Track [km]')
+        ax.set_zlabel('Cross Track [km]')
+    
+    plt.subplots_adjust(right=0.98)
+    
+    # Add colorbar
+    cbar = fig.colorbar(lc, ax=fig.get_axes(), shrink=0.8, aspect=20)
+    cbar.set_label('Time [h]', rotation=270, labelpad=15)
+    
+    plt.tight_layout(rect=[0, 0, 0.85, 1])
+    plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+    print(f"Hill frame saved to: {save_path}")
 
 def plot_error_statistics(results_dict, t_eval, save_path='error_statistics.png'):
     """
-    Plot detailed error statistics
+    Error statistics - all altitudes together
     """
-    fig, axes = plt.subplots(2, 3, figsize=(8, 6))
+    altitudes = sorted([k for k in results_dict.keys() if k != 't_eval'])
+    colors_alt = {'300': '#1f77b4', '400': '#ff7f0e', '500': '#2ca02c'}
 
-    r_true = results_dict['ground_truth'].sol(t_eval)[:3, :].T
-    v_true = results_dict['ground_truth'].sol(t_eval)[3:, :].T
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
 
-    models = ['spherical', 'ann']
-    colors = {'spherical': 'red', 'ann': 'green'}
-    labels = {'spherical': 'Spherical', 'ann': 'ANN'}
+    # Spherical - Position components
+    ax = axes[0, 0]
+    for alt in altitudes:
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        if 'ground_truth' in alt_results and 'spherical' in alt_results:
+            r_true = _get_data(alt_results['ground_truth'], alt_t_eval)[:3, :].T
+            r_test = _get_data(alt_results['spherical'], alt_t_eval)[:3, :].T
+            error_r = r_test - r_true
+            ax.plot(alt_t_eval / 3600, np.linalg.norm(error_r, axis=1) / 1000,
+                   color=colors_alt[alt], label=f'{alt} km', linewidth=1.5)
+    ax.set_xlabel('Time [hours]')
+    ax.set_ylabel('Position Error [km]')
+    ax.set_title('Spherical - Position Error')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
 
-    for idx, model_name in enumerate(models):
-        if model_name not in results_dict:
-            continue
+    # Spherical - Velocity components
+    ax = axes[0, 1]
+    for alt in altitudes:
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        if 'ground_truth' in alt_results and 'spherical' in alt_results:
+            v_true = _get_data(alt_results['ground_truth'], alt_t_eval)[3:, :].T
+            v_test = _get_data(alt_results['spherical'], alt_t_eval)[3:, :].T
+            error_v = v_test - v_true
+            ax.plot(alt_t_eval / 3600, np.linalg.norm(error_v, axis=1),
+                   color=colors_alt[alt], label=f'{alt} km', linewidth=1.5)
+    ax.set_xlabel('Time [hours]')
+    ax.set_ylabel('Velocity Error [m/s]')
+    ax.set_title('Spherical - Velocity Error')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
 
-        r_test = results_dict[model_name].sol(t_eval)[:3, :].T
-        v_test = results_dict[model_name].sol(t_eval)[3:, :].T
+    # Spherical - Combined
+    ax = axes[0, 2]
+    for alt in altitudes:
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        if 'ground_truth' in alt_results and 'spherical' in alt_results:
+            r_true = _get_data(alt_results['ground_truth'], alt_t_eval)[:3, :].T
+            r_test = _get_data(alt_results['spherical'], alt_t_eval)[:3, :].T
+            pos_error = compute_position_error(r_true, r_test)
+            ax.plot(alt_t_eval / 3600, pos_error / 1000,
+                   color=colors_alt[alt], label=f'{alt} km', linewidth=1.5)
+    ax.set_xlabel('Time [hours]')
+    ax.set_ylabel('Position Error [km]')
+    ax.set_title('Spherical - Total Position Error')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
 
-        # Position error components
-        ax = axes[idx, 0]
-        error_r = r_test - r_true
-        for i, comp in enumerate(['X', 'Y', 'Z']):
-            ax.plot(t_eval / 3600, error_r[:, i] / 1000,
-                    label=f'{comp}', linewidth=1.5)
-        ax.set_xlabel('Time [hours]', fontsize=9)
-        ax.set_ylabel('Position Error [km]', fontsize=9)
-        ax.set_title(f'{labels[model_name]} - Position Error Components', fontsize=10)
-        ax.legend(fontsize=8)
-        ax.grid(True, alpha=0.3)
-        ax.tick_params(labelsize=8)
+    # ANN - Position components
+    ax = axes[1, 0]
+    for alt in altitudes:
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        if 'ground_truth' in alt_results and 'ann' in alt_results:
+            r_true = _get_data(alt_results['ground_truth'], alt_t_eval)[:3, :].T
+            r_test = _get_data(alt_results['ann'], alt_t_eval)[:3, :].T
+            error_r = r_test - r_true
+            ax.plot(alt_t_eval / 3600, np.linalg.norm(error_r, axis=1) / 1000,
+                   color=colors_alt[alt], label=f'{alt} km', linewidth=1.5)
+    ax.set_xlabel('Time [hours]')
+    ax.set_ylabel('Position Error [km]')
+    ax.set_title('ANN - Position Error')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
 
-        # Velocity error components
-        ax = axes[idx, 1]
-        error_v = v_test - v_true
-        for i, comp in enumerate(['Vx', 'Vy', 'Vz']):
-            ax.plot(t_eval / 3600, error_v[:, i],
-                    label=f'{comp}', linewidth=1.5)
-        ax.set_xlabel('Time [hours]', fontsize=9)
-        ax.set_ylabel('Velocity Error [m/s]', fontsize=9)
-        ax.set_title(f'{labels[model_name]} - Velocity Error Components', fontsize=10)
-        ax.legend(fontsize=8)
-        ax.grid(True, alpha=0.3)
-        ax.tick_params(labelsize=8)
+    # ANN - Velocity components
+    ax = axes[1, 1]
+    for alt in altitudes:
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        if 'ground_truth' in alt_results and 'ann' in alt_results:
+            v_true = _get_data(alt_results['ground_truth'], alt_t_eval)[3:, :].T
+            v_test = _get_data(alt_results['ann'], alt_t_eval)[3:, :].T
+            error_v = v_test - v_true
+            ax.plot(alt_t_eval / 3600, np.linalg.norm(error_v, axis=1),
+                   color=colors_alt[alt], label=f'{alt} km', linewidth=1.5)
+    ax.set_xlabel('Time [hours]')
+    ax.set_ylabel('Velocity Error [m/s]')
+    ax.set_title('ANN - Velocity Error')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
 
-        # Total error magnitude
-        ax = axes[idx, 2]
-        pos_error = compute_position_error(r_true, r_test)
-        vel_error = compute_velocity_error(v_true, v_test)
-
-        ax_twin = ax.twinx()
-        line1 = ax.plot(t_eval / 3600, pos_error / 1000,
-                        'b-', label='Position', linewidth=1.5)
-        line2 = ax_twin.plot(t_eval / 3600, vel_error,
-                             'r-', label='Velocity', linewidth=1.5)
-
-        ax.set_xlabel('Time [hours]', fontsize=9)
-        ax.set_ylabel('Position Error [km]', color='b', fontsize=9)
-        ax_twin.set_ylabel('Velocity Error [m/s]', color='r', fontsize=9)
-        ax.set_title(f'{labels[model_name]} - Total Error', fontsize=10)
-        ax.tick_params(axis='y', labelcolor='b', labelsize=8)
-        ax_twin.tick_params(axis='y', labelcolor='r', labelsize=8)
-
-        lines = line1 + line2
-        labs = [l.get_label() for l in lines]
-        ax.legend(lines, labs, loc='best', fontsize=8)
-        ax.grid(True, alpha=0.3)
+    # ANN - Combined
+    ax = axes[1, 2]
+    for alt in altitudes:
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        if 'ground_truth' in alt_results and 'ann' in alt_results:
+            r_true = _get_data(alt_results['ground_truth'], alt_t_eval)[:3, :].T
+            r_test = _get_data(alt_results['ann'], alt_t_eval)[:3, :].T
+            pos_error = compute_position_error(r_true, r_test)
+            ax.plot(alt_t_eval / 3600, pos_error / 1000,
+                   color=colors_alt[alt], label=f'{alt} km', linewidth=1.5)
+    ax.set_xlabel('Time [hours]')
+    ax.set_ylabel('Position Error [km]')
+    ax.set_title('ANN - Total Position Error')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
-    plt.close()
-
-    print(f"Error statistics plot saved to: {save_path}")
+    print(f"Error statistics saved to: {save_path}")
 
 if __name__ == '__main__':
     pass
