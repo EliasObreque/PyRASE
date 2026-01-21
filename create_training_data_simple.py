@@ -48,7 +48,7 @@ sim_data = {
     "diffuse_srp": 0.6,        # 60% diffuse
     "v_inf": 7800.0,       # Orbital velocity at ~400 km altitude [m/s]
     "alt_km": 400.0,       # ISS altitude [km]
-    "time_str": "2025-10-23T12:00:00",
+    "time_str": "2025-10-23T12:00:000",
     "sigma_N": 0.8,       # Nearly complete accommodation
     "sigma_T": 0.5,       # High tangential accommodation
     "T_wall": 300.0,       # Average spacecraft surface temp [K]

@@ -50,10 +50,10 @@ mpl.rcParams.update({
 
 # Data paths
 MAIN_FOLDER = "./results/data/"
-DATA_PATH = MAIN_FOLDER + "aqua_b_data_1000_sample_2000"
+DATA_PATH = MAIN_FOLDER + "rect_prism_data_1000_sample_10000"
 
 # Model type
-PERTURBATION_STATE = 'srp_t'
+PERTURBATION_STATE = 'srp_f'
 
 
 # Extract base filename for output folder
@@ -85,7 +85,7 @@ PATIENCE = 10
 WEIGHT_DECAY = 1e-4
 
 # Parallelization settings
-N_WORKERS = max(1, int(cpu_count()/2))
+N_WORKERS = max(1, int(cpu_count()-1))
 print(f"Available CPUs: {cpu_count()}, Using: {N_WORKERS} workers")
 
 # Device
@@ -761,7 +761,7 @@ if __name__ == "__main__":
     # Run parallel hyperparameter search
     # if file not exist
     csv_path = os.path.join(OUT_DIR, "all_results.csv")
-    if not os.path.exists(csv_path):
+    if not os.path.exists(csv_path) or True:
         results_df = run_comprehensive_search_parallel()
         results_df.to_csv(csv_path, index=False)
         print(f"\nAll results saved to: {csv_path}")

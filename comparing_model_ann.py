@@ -34,7 +34,7 @@ from core.orbit_propagation import (
     MU_EARTH,
     R_EARTH,
 )
-from core.monitor import plot_orbit_comparison, plot_error_statistics, plot_orbit_hill_frame, get_hill_frame_ON, plot_orbit
+from core.monitor import plot_orbit_comparison, plot_error_statistics, plot_orbit_hill_frame, get_hill_frame_ON, plot_orbit, plot_altitude, plot_pos_vel_error
 
 from core.selective_perturbation_comparison import (
     compare_perturbation_scenarios
@@ -46,23 +46,19 @@ MESH = MESH.triangulate().clean()
 MESH = MESH.subdivide(1, subfilter='linear').clean()
 
 # Spacecraft parameters
-mass = 10.0  # kg (3U CubeSat)
+mass = 100.0  # kg (3U CubeSat)
 
 # ==========================
 # EXAMPLE 1: BASIC COMPARISON
 # ==========================
 
-def example_basic_comparison(n_orbits):
+def example_basic_comparison(alt_km, n_orbits, model_name_path, config_path):
     """
     Basic comparison of all three models with default parameters
     """
     print("\n" + "=" * 70)
     print("EXAMPLE 1: BASIC ORBIT PROPAGATION COMPARISON")
     print("=" * 70)
-
-    # Output directory
-    out_dir = "./results/example_basic/"
-    os.makedirs(out_dir, exist_ok=True)
 
     # Load mesh (create simple box if file not found)
     mesh_path = "./mesh/spacecraft.stl"
@@ -77,7 +73,11 @@ def example_basic_comparison(n_orbits):
     a_ref = (lx*ly + lx*lz + ly*lz) / 3
 
     # Load ANN model
-    model_path = "results/optimization/rect_prism_data_1000_sample_10000/config_264/model.pkl"
+    optimization_path = "results/optimization/"
+
+    model_path = optimization_path + model_name_path + config_path + "model.pkl"
+
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ann_models = {}
     try:
@@ -90,8 +90,15 @@ def example_basic_comparison(n_orbits):
         ann_model = None
         ann_scaler = None
 
-    # Define initial orbit (400 km circular LEO, 51.6° inclination)
-    a = R_EARTH + 400e3  # m
+    # Define initial orbit (alt_km km circular LEO, 51.6° inclination)
+    # alt_km = 450
+
+    # Output directory
+    out_dir = "./results/example_basic/" + model_name_path + config_path
+    os.makedirs(out_dir, exist_ok=True)
+    
+
+    a = R_EARTH + alt_km * 1e3  # m
     e = 0.001
     i = np.deg2rad(80.0)
 
@@ -129,13 +136,14 @@ def example_basic_comparison(n_orbits):
     sim_data = {
         'v_inf': np.linalg.norm(v0),
         'alt_km': (a - R_EARTH) / 1000,
-        'time_str': '2024-01-01 12:00:00',
-        'sigma_N': 0.9,
-        'sigma_T': 0.9,
+        'time_str': '2025-01-01 12:00:00',
+        'sigma_N': 0.8,
+        'sigma_T': 0.5,
         'T_wall': 300,
         'A_ref': a_ref,
-        'spec_srp': 0.1,
-        'diffuse_srp': 0.5
+        'spec_srp': 0.2,
+        'diffuse_srp': 0.6,
+        'scale_shape': 1.0,
     }
 
     # Propagate orbits
@@ -196,7 +204,7 @@ def example_basic_comparison(n_orbits):
         'res_x': 1000,  # Low resolution for speed
         'res_y': 1000
     }
-    # results['ground_truth'] = propagate_orbit(state0, t_span, params_gt)
+    #results['ground_truth'] = propagate_orbit(state0, t_span, params_gt)
 
     print("\nPropagating Ground Truth (Theory)...")
     params_gt = {
@@ -213,23 +221,6 @@ def example_basic_comparison(n_orbits):
         'lz': lz,
     }
     results['ground_truth'] = propagate_orbit(state0, t_span, params_gt)
-
-    plot_orbit(results, t_eval,)
-    # Generate plots
-    print("\nGenerating comparison plots...")
-    plot_orbit_comparison(results, t_eval,
-                          save_path=os.path.join(out_dir, 'comparison.png'))
-    plot_orbit_hill_frame(results, t_eval, os.path.join(out_dir, 'hill_orbit_comparison.png'))
-
-    if len(results) > 2:  # If ANN model is available
-        plot_error_statistics(results, t_eval,
-                              save_path=os.path.join(out_dir, 'errors.png'))
-
-    # Print error summary
-    print_error_summary(results, t_eval)
-    plt.show()
-    print(f"\nResults saved to: {out_dir}")
-    print("=" * 70)
     results['t_eval'] = t_eval
     return results
 
@@ -241,34 +232,54 @@ if __name__ == "__main__":
     print("\n" + "=" * 70)
     print("ORBIT PROPAGATION COMPARISON - EXAMPLE USAGE")
     print("=" * 70)
+       
+    # -----------------------------------------------------
+    # user option
+    n_orbits = 0.1
 
-    n_orbits = 15#float(input("\nEnter number of orbits: ").strip())
 
     out_dir = "./results/example_basic/"
     os.makedirs(out_dir, exist_ok=True)
     name = f"rect_prism_{n_orbits}.pkl"
+    
+    model_name_path = "/rect_prism_data_1000_sample_10000/drag_f/"
+    config_path = "/config_264/"
 
-    if not os.path.exists(out_dir + name) or True:
-        results = example_basic_comparison(n_orbits)
+    # Output directory
+    out_dir = "./results/example_basic/" + model_name_path + config_path
+    os.makedirs(out_dir, exist_ok=True)
+
+    if not os.path.exists(out_dir + name):
+        results_300 = example_basic_comparison(300.0, n_orbits, model_name_path, config_path)
+        results_400 = example_basic_comparison(400.0, n_orbits, model_name_path, config_path)
+        results_500 = example_basic_comparison(500.0, n_orbits, model_name_path, config_path)
+        t_eval = results_500['t_eval']
+        results = {'300': results_300,
+                   '400': results_400,
+                   '500': results_500,
+                   't_eval': t_eval
+                   }
+        t_eval = results['t_eval']
         with open(out_dir + name, 'wb') as f:
             pickle.dump(results, f)
     else:
         with open(out_dir + name, 'rb') as f:
             results = pickle.load(f)
             t_eval = results['t_eval']
-        # Generate plots
-        print("\nGenerating comparison plots...")
-        plot_orbit_comparison(results, t_eval,
-                              save_path=os.path.join(out_dir, 'comparison.png'))
-        plot_orbit_hill_frame(results, t_eval, os.path.join(out_dir, 'hill_orbit_comparison.png'))
 
-        if len(results) > 2:  # If ANN model is available
-            plot_error_statistics(results, t_eval,
-                                  save_path=os.path.join(out_dir, 'errors.png'))
+    # Generate plots
+    print("\nGenerating comparison plots...")
+    plot_orbit_comparison(results, t_eval, save_path=os.path.join(out_dir, 'orbit_comparison.png'))
+    plot_pos_vel_error(results, t_eval, save_path=os.path.join(out_dir, 'pos_vel_error.png'))
+    plot_orbit_hill_frame(results, t_eval, os.path.join(out_dir, 'hill_orbit_comparison.png'))
 
-        # Print error summary
-        print_error_summary(results, t_eval)
-        plt.show()
+    if len(results) > 2:  # If ANN model is available
+        plot_error_statistics(results, t_eval,
+                                save_path=os.path.join(out_dir, 'errors.png'))
+
+    # Print error summary
+    print_error_summary(results, t_eval)
+    plt.show()
 
     print("\n" + "=" * 70)
     print("✓ EXAMPLES COMPLETED")

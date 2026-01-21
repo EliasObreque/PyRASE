@@ -15,10 +15,10 @@ from core.optimal_ray_tracing import compute_ray_tracing_fast_optimized
 
 
 # MESH
-reader = pv.get_reader("./models/ALIGN-6U.stl")
+reader = pv.get_reader("./models/Aqua+(B).stl")
 mesh = reader.read()
 # mesh.rotate_y(90, inplace=True)
-MESH_SCALE = 1e-3 # m, km, mm, cm
+MESH_SCALE = 1e-0 # m, km, mm, cm
 lx, ly, lz = mesh.bounds_size
 mesh.points *= MESH_SCALE
 pl = pv.Plotter()
@@ -33,7 +33,7 @@ res_y = 1000
 N_SAMPLE = 2000
 sphere_vectors = halton_sphere(N_SAMPLE)
 
-OUT_FILENAME = f"./results/data/align_data_{res_y}_sample_{N_SAMPLE}"
+OUT_FILENAME = f"./results/data/aqua_b_data_{res_y}_sample_{N_SAMPLE}"
 
 
 A_ref = (lx*ly + ly*lz + lz*lz) / 3
@@ -60,9 +60,6 @@ FORCE = True
 data_mesh = compute_ann_data(mesh, sphere_vectors, sim_data, OUT_FILENAME, FORCE,
                              save_analytical=False)
     
-with open(f"./results/data/align_data_{res_y}_sample_{N_SAMPLE}", "wb") as file_:
-    pickle.dump(data_mesh, file_)
-
 
 print("Process finished...")
     
