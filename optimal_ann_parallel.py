@@ -50,7 +50,9 @@ mpl.rcParams.update({
 
 # Data paths
 MAIN_FOLDER = "./results/data/"
-DATA_PATH = MAIN_FOLDER + "rect_prism_data_1000_sample_10000"
+DATA_PATH = MAIN_FOLDER + "aqua_b_data_1000_sample_2000"
+
+#DATA_PATH = MAIN_FOLDER + "rect_prism_data_1000_sample_10000"
 
 # Model type
 PERTURBATION_STATE = 'srp_f'
@@ -80,8 +82,8 @@ BATCH_LIST = [64, 128]
 SEEDS = [0, 1, 2]
 
 # Training parameters
-EPOCHS = 500
-PATIENCE = 10
+EPOCHS = 5000
+PATIENCE = 100
 WEIGHT_DECAY = 1e-4
 
 # Parallelization settings
