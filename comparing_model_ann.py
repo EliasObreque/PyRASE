@@ -253,8 +253,8 @@ if __name__ == "__main__":
     os.makedirs(out_dir, exist_ok=True)
     name = f"rect_prism_{n_orbits}.pkl"
     
-    model_name_path = "/aqua_b_data_1000_sample_20000/srp_f/"
-    #model_name_path = "/rect_prism_data_1000_sample_10000/drag_f/"
+    #model_name_path = "/aqua_b_data_1000_sample_20000/drag_f/"
+    model_name_path = "/rect_prism_data_1000_sample_10000/drag_f/"
     
     config_path = "/config_239/" # aqua t
     #config_path = "/config_168/" # rec

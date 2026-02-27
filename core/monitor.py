@@ -1201,8 +1201,10 @@ def plot_pos_vel_error(results_dict, t_eval, save_path='orbit_comparison_error.p
     
     fig, (ax_pos, ax_vel) = plt.subplots(2, 1, figsize=(6, 6))
     
+    # for drag use: 
     colors_alt = {'300': '#D87F7F', '400': '#A4B86E', '500': '#6B8CD4'}
-    colors_alt = {'500': '#D87F7F', '1000': '#A4B86E', '1500': '#6B8CD4'}
+    # for srp use:
+    #colors_alt = {'500': '#D87F7F', '1000': '#A4B86E', '1500': '#6B8CD4'}
     altitudes = sorted([k for k in results_dict.keys() if k != 't_eval'], key=int)
     
     # Position error
@@ -1228,7 +1230,7 @@ def plot_pos_vel_error(results_dict, t_eval, save_path='orbit_comparison_error.p
     ax_pos.set_ylabel('Position Error [m]')
     if log_scale:
         ax_pos.set_yscale("log")
-        ax_pos.set_ylim(0.001, ax_pos.get_ylim()[1])
+        ax_pos.set_ylim(0.0001, ax_pos.get_ylim()[1])
 
     ax_pos.minorticks_on()
     ax_pos.grid(which='major', linestyle='-', alpha=0.8)
@@ -1237,7 +1239,7 @@ def plot_pos_vel_error(results_dict, t_eval, save_path='orbit_comparison_error.p
     Line2D([0], [0], color='black', linestyle='-', label='ANN'),
     Line2D([0], [0], color='black', linestyle='--', label='Spherical')
     ]
-    ax_pos.legend(handles=legend_elements)
+    ax_pos.legend(handles=legend_elements, loc="lower right")
 
     # Velocity error
     for alt in altitudes:
@@ -1258,20 +1260,20 @@ def plot_pos_vel_error(results_dict, t_eval, save_path='orbit_comparison_error.p
     
     ax_vel.set_xlabel('Time [hours]')
     ax_vel.set_ylabel('Velocity Error [m/s]')
+    if log_scale:
+        ax_vel.set_yscale("log")
+        ax_vel.set_ylim(1e-7, ax_vel.get_ylim()[1])
+
     ax_vel.minorticks_on()
     ax_vel.grid(which='major', linestyle='-', alpha=0.8)
     ax_vel.grid(which='minor', linestyle=':', alpha=0.5)
-
-    if log_scale:
-        ax_vel.set_yscale("log")
-        ax_vel.set_ylim(1e-6, ax_pos.get_ylim()[1])
 
 
     legend_elements = [
     Line2D([0], [0], color='black', linestyle='-', label='ANN'),
     Line2D([0], [0], color='black', linestyle='--', label='Spherical')
     ]
-    ax_vel.legend(handles=legend_elements)
+    ax_vel.legend(handles=legend_elements, loc="lower right")
 
     
     # Single legend at top with 3 columns
