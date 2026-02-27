@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 import matplotlib as mpl
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
+from matplotlib.ticker import FuncFormatter
 
 mpl.rcParams.update({
     "font.family": "serif",                     # generic family
@@ -1374,6 +1375,7 @@ def plot_orbit_hill_frame(results_dict, t_eval, save_path='hill_orbit_comparison
     from mpl_toolkits.mplot3d.art3d import Line3DCollection
     
     altitudes = sorted([k for k in results_dict.keys() if k != 't_eval'])
+    altitudes = ['300']
     colors_alt = {'300': '#1f77b4', '400': '#ff7f0e', '500': '#2ca02c'}
     
     fig = plt.figure(figsize=(10, 5))
@@ -1395,19 +1397,19 @@ def plot_orbit_hill_frame(results_dict, t_eval, save_path='hill_orbit_comparison
             
             rel_pos = r_test - r_true
             rho_list = np.array([get_hill_frame_ON(r_c, v_c) @ r_d 
-                                for r_d, r_c, v_c in zip(rel_pos, r_true, v_true)]) / 1000
+                                for r_d, r_c, v_c in zip(rel_pos, r_true, v_true)])
             
             points = rho_list.reshape(-1, 1, 3)
             segments = np.concatenate([points[:-1], points[1:]], axis=1)
-            lc = Line3DCollection(segments, cmap='inferno', linewidth=1.5, hatch=altitude_hatch[alt])
+            lc = Line3DCollection(segments, cmap='inferno', linewidth=1.5)#, hatch=altitude_hatch[alt])
             lc.set_array(alt_t_eval[:-1] / 3600)
             ax.add_collection(lc)
         
         labels_model = {'spherical': 'Spherical Model', 'ann': 'ANN Model'}
         ax.set_title(labels_model[model_name])
-        ax.set_xlabel('Radial [km]')
-        ax.set_ylabel('Along Track [km]')
-        ax.set_zlabel('Cross Track [km]')
+        ax.set_xlabel('Radial [m]')
+        ax.set_ylabel('Along Track [m]')
+        ax.set_zlabel('Cross Track [m]')
     
     plt.subplots_adjust(right=0.98)
     
@@ -1416,6 +1418,67 @@ def plot_orbit_hill_frame(results_dict, t_eval, save_path='hill_orbit_comparison
     cbar.set_label('Time [h]', rotation=270, labelpad=15)
     
     plt.tight_layout(rect=[0, 0, 0.85, 1])
+    plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+    print(f"Hill frame saved to: {save_path}")
+
+def clean_formatter(x, pos):
+    if x == 0:
+        return '0'
+    abs_x = abs(x)
+    if abs_x < 0.01 or abs_x >= 100:
+        return f'{x:.0e}'
+    elif abs_x < 1:
+        return f'{x:.2f}'
+    else:
+        return f'{x:.0f}'
+
+def plot_orbit_hill_frame_alt(results_dict, t_eval, alt, save_path='hill_orbit_comparison.png'):
+
+    alt_results = results_dict[alt]
+    alt_t_eval = alt_results.get('t_eval', t_eval)
+
+    r_true = alt_results['ground_truth'].sol(alt_t_eval)[:3, :].T
+    v_true = alt_results['ground_truth'].sol(alt_t_eval)[3:, :].T
+
+    fig = plt.figure(figsize=(8, 5))
+
+    lc_list = []
+    for i, model_name in enumerate(['spherical', 'ann']):
+        ax = fig.add_subplot(1, 2, i + 1, projection='3d')
+
+        r_test = alt_results[model_name].sol(alt_t_eval)[:3, :].T
+        rel_pos = r_test - r_true
+        rho = np.array([get_hill_frame_ON(r_c, v_c) @ r_d
+                        for r_d, r_c, v_c in zip(rel_pos, r_true, v_true)])/1000
+
+        # Line collection with time colormap
+        points = rho.reshape(-1, 1, 3)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        lc = Line3DCollection(segments, cmap='GnBu', linewidth=1.5)
+        lc.set_array(alt_t_eval[:-1] / 3600)
+        ax.add_collection(lc)
+        lc_list.append(lc)
+        # Fix axis limits from data
+        pad = 0.1  # 10% padding
+        for axis, idx in [('x', 0), ('y', 1), ('z', 2)]:
+            dmin, dmax = rho[:, idx].min(), rho[:, idx].max()
+            margin = max((dmax - dmin) * pad, 1e-3)  # avoid zero range
+            getattr(ax, f'set_{axis}lim')(dmin - margin, dmax - margin)
+
+        labels = {'spherical': 'Spherical Model', 'ann': 'ANN Model'}
+        ax.set_title(labels[model_name])
+        ax.set_xlabel('Radial [km]')
+        ax.set_ylabel('Along-track [km]')
+        ax.set_zlabel('Cross-track [km]')
+
+        for axis in [ax.xaxis, ax.yaxis, ax.zaxis]:
+            axis.set_major_formatter(FuncFormatter(clean_formatter))
+
+    fig.subplots_adjust(left=0.01, right=0.93, bottom=0.22, wspace=0.14, top=0.93)
+    cbar_ax = fig.add_axes([0.25, 0.15, 0.5, 0.03])
+    cbar = fig.colorbar(lc_list[0], cax=cbar_ax, orientation='horizontal')
+    cbar.set_label('Time [h]', labelpad=10)
+
     plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
     print(f"Hill frame saved to: {save_path}")
 

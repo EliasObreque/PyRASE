@@ -32,7 +32,7 @@ from core.drag_models import spherical_drag_force, get_dynamic_pressure, compute
 from core.srp_models import spherical_srp_force
 from core.ann_tools import (load_ann_models, load_ann_model,
                             ann_predict_force, ann_predict_torque, ann_predict)
-from core.monitor import plot_orbit_comparison, plot_error_statistics, compute_position_error, compute_velocity_error
+from core.monitor import plot_orbit_comparison, plot_error_statistics, compute_position_error, compute_velocity_error, plot_orbit_hill_frame_alt
 
 # ==========================
 # CONSTANTS

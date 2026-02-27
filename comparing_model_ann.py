@@ -18,6 +18,7 @@ from core.orbit_propagation import (
     propagate_orbit,
     plot_orbit_comparison,
     plot_error_statistics,
+    plot_orbit_hill_frame_alt,
     print_error_summary,
     MU_EARTH,
     R_EARTH,
@@ -253,11 +254,11 @@ if __name__ == "__main__":
     os.makedirs(out_dir, exist_ok=True)
     name = f"rect_prism_{n_orbits}.pkl"
     
-    #model_name_path = "/aqua_b_data_1000_sample_20000/drag_f/"
-    model_name_path = "/rect_prism_data_1000_sample_10000/drag_f/"
+    model_name_path = "/aqua_b_data_1000_sample_20000/drag_f/"
+    #model_name_path = "/rect_prism_data_1000_sample_10000/drag_f/"
     
     config_path = "/config_239/" # aqua t
-    #config_path = "/config_168/" # rec
+    config_path = "/config_168/" # rec
 
     mesh_path = "./models/Aqua+(B).stl"
     #mesh_path = None
@@ -289,6 +290,7 @@ if __name__ == "__main__":
     plot_pos_vel_error(results, t_eval, save_path=os.path.join(out_dir, 'pos_vel_error.png'), log_scale=True)
     #plot_orbit_hill_frame(results, t_eval, os.path.join(out_dir, 'hill_orbit_comparison.png'))
 
+    plot_orbit_hill_frame_alt(results, t_eval, '300', os.path.join(out_dir, 'hill_orbit_comparison.png'))
     #if len(results) > 2:  # If ANN model is available
     #    plot_error_statistics(results, t_eval,
     #                            save_path=os.path.join(out_dir, 'errors.png'))
