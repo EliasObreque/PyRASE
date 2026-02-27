@@ -1194,11 +1194,103 @@ def plot_orbit_comparison(results_dict, t_eval, save_path='orbit_comparison.png'
     plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
     print(f"Orbit comparison saved to: {save_path}")
 
-def plot_pos_vel_error(results_dict, t_eval, save_path='orbit_comparison_error.png'):
+
+def plot_pos_vel_error(results_dict, t_eval, save_path='orbit_comparison_error.png', log_scale=False):
+    """Position and velocity errors with twin axes"""
+    from matplotlib.lines import Line2D
+    
+    fig, (ax_pos, ax_vel) = plt.subplots(2, 1, figsize=(6, 6))
+    
+    colors_alt = {'300': '#D87F7F', '400': '#A4B86E', '500': '#6B8CD4'}
+    colors_alt = {'500': '#D87F7F', '1000': '#A4B86E', '1500': '#6B8CD4'}
+    altitudes = sorted([k for k in results_dict.keys() if k != 't_eval'], key=int)
+    
+    # Position error
+    
+    for i, alt in enumerate(altitudes):
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        if 'ground_truth' in alt_results and 'ann' in alt_results:
+            r_true = alt_results['ground_truth'].sol(alt_t_eval)[:3, :].T
+            r_test = alt_results['ann'].sol(alt_t_eval)[:3, :].T
+            pos_error = compute_position_error(r_true, r_test)
+            ax_pos.plot(alt_t_eval / 3600, pos_error, '-', #label="ANN" if i == 0 else None,
+                       color=colors_alt[alt], linewidth=1.5)
+
+        if 'ground_truth' in alt_results and 'spherical' in alt_results:
+            r_true = alt_results['ground_truth'].sol(alt_t_eval)[:3, :].T
+            r_test = alt_results['spherical'].sol(alt_t_eval)[:3, :].T
+            pos_error = compute_position_error(r_true, r_test)
+            ax_pos.plot(alt_t_eval / 3600, pos_error, '--', #label="Spherical" if i == 0 else None,
+                        color=colors_alt[alt], linewidth=1.5)
+    
+    ax_pos.set_xlabel('Time [hours]')
+    ax_pos.set_ylabel('Position Error [m]')
+    if log_scale:
+        ax_pos.set_yscale("log")
+        ax_pos.set_ylim(0.001, ax_pos.get_ylim()[1])
+
+    ax_pos.minorticks_on()
+    ax_pos.grid(which='major', linestyle='-', alpha=0.8)
+    ax_pos.grid(which='minor', linestyle=':', alpha=0.5)
+    legend_elements = [
+    Line2D([0], [0], color='black', linestyle='-', label='ANN'),
+    Line2D([0], [0], color='black', linestyle='--', label='Spherical')
+    ]
+    ax_pos.legend(handles=legend_elements)
+
+    # Velocity error
+    for alt in altitudes:
+        alt_results = results_dict[alt]
+        alt_t_eval = alt_results.get('t_eval', t_eval)
+        if 'ground_truth' in alt_results and 'ann' in alt_results:
+            v_true = alt_results['ground_truth'].sol(alt_t_eval)[3:, :].T
+            v_test = alt_results['ann'].sol(alt_t_eval)[3:, :].T
+            vel_error = compute_velocity_error(v_true, v_test)
+            ax_vel.plot(alt_t_eval / 3600, vel_error, '-', #label="ANN" if i == 0 else None,
+                       color=colors_alt[alt], linewidth=1.5)
+        if 'ground_truth' in alt_results and 'spherical' in alt_results:
+            v_true = alt_results['ground_truth'].sol(alt_t_eval)[3:, :].T
+            v_test = alt_results['spherical'].sol(alt_t_eval)[3:, :].T
+            vel_error = compute_velocity_error(v_true, v_test)
+            ax_vel.plot(alt_t_eval / 3600, vel_error, '--', #label="Spherical" if i == 0 else None,
+                        color=colors_alt[alt], linewidth=1.5)
+    
+    ax_vel.set_xlabel('Time [hours]')
+    ax_vel.set_ylabel('Velocity Error [m/s]')
+    ax_vel.minorticks_on()
+    ax_vel.grid(which='major', linestyle='-', alpha=0.8)
+    ax_vel.grid(which='minor', linestyle=':', alpha=0.5)
+
+    if log_scale:
+        ax_vel.set_yscale("log")
+        ax_vel.set_ylim(1e-6, ax_pos.get_ylim()[1])
+
+
+    legend_elements = [
+    Line2D([0], [0], color='black', linestyle='-', label='ANN'),
+    Line2D([0], [0], color='black', linestyle='--', label='Spherical')
+    ]
+    ax_vel.legend(handles=legend_elements)
+
+    
+    # Single legend at top with 3 columns
+    legend_elements = [Line2D([0], [0], color=colors_alt[alt], lw=2, label=f'{alt} km') 
+                       for alt in altitudes]
+
+    fig.legend(handles=legend_elements, loc='upper center', ncol=3,
+           bbox_to_anchor=(0.5, 0.14), frameon=True, title='Altitude')
+
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.95, bottom=0.22)
+    plt.savefig(save_path, dpi=600, bbox_inches='tight', facecolor='white')
+    print(f"Error comparison plot saved to: {save_path}")
+
+def plot_pos_vel_error_(results_dict, t_eval, save_path='orbit_comparison_error.png'):
     """Position and velocity errors with two legend boxes"""
     from matplotlib.lines import Line2D
     
-    fig, (ax_pos, ax_vel) = plt.subplots(1, 2, figsize=(10, 4))
+    fig, (ax_pos, ax_vel) = plt.subplots(2, 1, figsize=(5, 6))
     colors_alt = {'300': '#D87F7F', '400': '#A4B86E', '500': '#6B8CD4'}
     altitudes = sorted([k for k in results_dict.keys() if k != 't_eval'])
     
@@ -1222,7 +1314,7 @@ def plot_pos_vel_error(results_dict, t_eval, save_path='orbit_comparison_error.p
     ax_pos.set_xlabel('Time [hours]')
     ax_pos.set_ylabel('Position Error [km]')
     ax_pos.set_title('Position Error')
-    ax_pos.set_yscale('log')
+    #ax_pos.set_yscale('log')
     ax_pos.grid(True, alpha=0.3)
     
     # Create two legend boxes for position
@@ -1231,9 +1323,6 @@ def plot_pos_vel_error(results_dict, t_eval, save_path='orbit_comparison_error.p
     legend2_elements = [Line2D([0], [0], color='black', lw=2, linestyle='-', label='ANN'),
                        Line2D([0], [0], color='black', lw=2, linestyle='--', label='Spherical')]
     
-    legend1 = ax_pos.legend(handles=legend1_elements, loc='upper left', title='Altitude')
-    ax_pos.add_artist(legend1)
-    ax_pos.legend(handles=legend2_elements, loc='lower right', title='Model')
     
     # Velocity error
     for alt in altitudes:
@@ -1255,13 +1344,23 @@ def plot_pos_vel_error(results_dict, t_eval, save_path='orbit_comparison_error.p
     ax_vel.set_xlabel('Time [hours]')
     ax_vel.set_ylabel('Velocity Error [m/s]')
     ax_vel.set_title('Velocity Error')
-    ax_vel.set_yscale('log')
+    #ax_vel.set_yscale('log')
     ax_vel.grid(True, alpha=0.3)
     
     # Create two legend boxes for velocity
-    legend1 = ax_vel.legend(handles=legend1_elements, loc='lower left', title='Altitude')
+    # For position subplot
+    legend1 = ax_pos.legend(handles=legend1_elements, loc='center left', 
+                            bbox_to_anchor=(1, 0.65), title='Altitude')
+    ax_pos.add_artist(legend1)
+    ax_pos.legend(handles=legend2_elements, loc='center left', 
+                    bbox_to_anchor=(1, 0.35), title='Model')
+
+    # For velocity subplot
+    legend1 = ax_vel.legend(handles=legend1_elements, loc='center left', 
+                            bbox_to_anchor=(1, 0.65), title='Altitude')
     ax_vel.add_artist(legend1)
-    ax_vel.legend(handles=legend2_elements, loc='lower right', title='Model')
+    ax_vel.legend(handles=legend2_elements, loc='center left', 
+                    bbox_to_anchor=(1, 0.35), title='Model')
     
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')

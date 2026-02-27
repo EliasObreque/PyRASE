@@ -105,8 +105,9 @@ def compute_ray_tracing_fast_optimized(mesh: pv.PolyData, r_source: np.ndarray,
 
     # === 7. Calculate normals and cos(theta) (OPTIMIZED - vectorized) ===
     n = mesh.cell_normals[cell_ids]
-    # Vectorized normalization
+    # Vectorized normalization with safe handling of zero/NaN norms
     norms = np.linalg.norm(n, axis=1, keepdims=True)
+    norms = np.where(norms < 1e-12, 1.0, norms)  # Avoid division by zero
     n = n / norms
 
     # Vectorized dot product (MUCH faster than loop)
@@ -114,9 +115,10 @@ def compute_ray_tracing_fast_optimized(mesh: pv.PolyData, r_source: np.ndarray,
 
     # area projected
     n_proj = mesh.cell_normals
-    # Vectorized normalization
-    norms = np.linalg.norm(n_proj, axis=1, keepdims=True)
-    n_proj = n_proj / norms
+    # Vectorized normalization with safe handling of zero/NaN norms
+    norms_proj = np.linalg.norm(n_proj, axis=1, keepdims=True)
+    norms_proj = np.where(norms_proj < 1e-12, 1.0, norms_proj)  # Avoid division by zero
+    n_proj = n_proj / norms_proj
     a_fem = mesh.compute_cell_sizes(length=False, area=True, volume=False)['Area']
     a_fem = np.asarray(a_fem, dtype=np.float64)
     cos_th_proj = np.einsum('ij,j->i', n_proj, r_source)
@@ -160,21 +162,6 @@ def compute_ray_tracing_fast_optimized(mesh: pv.PolyData, r_source: np.ndarray,
         res_prop = fill_gaps_by_spatial_interpolation_optimized(res_prop, 
                                                                 max_gap_size=10,
                                                                 verbose=verbose)
-
-    # filtered = filter_edge_artifacts_optimized(
-    #     res_prop['hit_points'],
-    #     res_prop['cell_normal'],
-    #     res_prop['cos_th'],
-    #     res_prop['cell_ids'],
-    #     res_prop['ray_ids'],
-    #     mesh
-    # )
-    #
-    # res_prop['hit_points'] = filtered['hits']
-    # res_prop['cell_normal'] = filtered['normals']
-    # res_prop['cos_th'] = filtered['cos_th']
-    # res_prop['cell_ids'] = filtered['cell_ids']
-    # res_prop['ray_ids'] = filtered['ray_ids']
 
     Area_r = np.abs(px_area / res_prop['cos_th'])
     area_aux = px_area / np.cos(89 * np.pi / 180)

@@ -56,7 +56,8 @@ ml-base-model-for-drag-and-srp/
 │   ├── calibration_sphere.py   # Sphere calibration utilities
 │   ├── drag_validation.py      # Drag model validation
 │   ├── srp_validation.py       # SRP model validation
-│   └── optimal_ann.py          # Artificial Neural Network optimization
+│   ├── ann_tools.py            # Artificial Neural Network optimization
+│	└── orbit_propagation.py    # Orbit propagation with RK45
 ├── models/                     # 3D models directory
 ├── results/                    # Output results directory
 ├── requirements.txt            # Python dependencies
@@ -64,6 +65,35 @@ ml-base-model-for-drag-and-srp/
 ```
 
 ## 🎯 Usage
+
+### Main Files
+
+1. Creating dataset
+```
+create_training_data_stl.py # Create trining data from STL
+	- Input: res_x, res_y, N_SAMPLES
+	- Output: Dataset - "./results/data/{MODEL_NAME}"
+
+create_training_data_simple.py # Create training data from PyVista PolyData
+	- Input: Define geometry, res_x, res_y, N_SAMPLES
+	- Output: Dataset - "./results/data/{MODEL_NAME}"
+```
+
+2. Training ANN
+```
+optimal_ann_parallel.py # Training 
+	- Input: DATA_PATH, PERTURBATION_STATE, EPOCHS
+	- Output: *.txt file with weights and code implementation of the ANN
+			  - ANN models - "results/optimization/{MODEL_NAME}/PERTURBATION_STATE/"
+```
+
+3. Simulation comparison
+```
+comparing_model_ann.py # Comparison
+	- Input: mesh_path, config_path, model_name_path, n_orbits
+	- Output: Simulation results - "./results/example_basic/{MODEL_NAME}/PERTURBATION_STATE/"
+```
+
 
 ### Running SRP Validation
 
@@ -89,7 +119,7 @@ python ./core/drag_validation.py
 
 Validates atmospheric drag computations against known models.
 
-### Custom Ray Tracing
+### Custom Ray Casting
 
 ```python
 import pyvista as pv
@@ -104,7 +134,7 @@ mesh = mesh.triangulate().clean()
 r_source = np.array([-1, 0, 0])  # X-axis direction
 r_source = r_source / np.linalg.norm(r_source)
 
-# Perform ray tracing
+# Perform ray Casting
 results = compute_ray_tracing_fast_optimized(mesh, r_source, res_x=500, res_y=500)
 
 print(f"Hit points: {len(results['hit_points'])}")

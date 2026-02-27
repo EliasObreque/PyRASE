@@ -30,7 +30,7 @@ pl.show()
 res_x = 1000
 res_y = 1000
 # Sphere samples
-N_SAMPLE = 2000
+N_SAMPLE = 20000
 sphere_vectors = halton_sphere(N_SAMPLE)
 
 OUT_FILENAME = f"./results/data/aqua_b_data_{res_y}_sample_{N_SAMPLE}"

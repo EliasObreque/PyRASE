@@ -5,24 +5,12 @@ email: els.obrq@gmail.com
 """
 from matplotlib import pyplot as plt
 
-# -*- coding: utf-8 -*-
-"""
-Example Usage Script for Orbit Propagation Comparison
-Created by: O Break
-Date: 2025-12-16
-
-Demonstrates:
-1. Basic orbit propagation comparison
-2. Selective perturbation analysis
-3. Custom configuration
-4. Results visualization
-"""
-
 import os
 import numpy as np
 import torch
 import pyvista as pv
 import pickle
+from datetime import datetime
 
 # Import comparison tools
 from core.orbit_propagation import (
@@ -41,18 +29,24 @@ from core.selective_perturbation_comparison import (
 )
 
 print("Creating simple box mesh...")
-MESH = pv.Cube(x_length=3, y_length=1, z_length=2)
+MESH = pv.Cube(x_length=0.3, y_length=0.1, z_length=0.1)
 MESH = MESH.triangulate().clean()
 MESH = MESH.subdivide(1, subfilter='linear').clean()
+lx, ly, lz = MESH.bounds_size
+scale_matrix = np.eye(3)
+scale_matrix[0, 0] = ly*lz / 2
+scale_matrix[1, 1] = lx*lz / 6
+scale_matrix[2, 2] = ly*lx / 3
+print("Bounds:", lx, ly, lz)
 
 # Spacecraft parameters
-mass = 100.0  # kg (3U CubeSat)
+mass = 2934  # kg 
 
 # ==========================
 # EXAMPLE 1: BASIC COMPARISON
 # ==========================
 
-def example_basic_comparison(alt_km, n_orbits, model_name_path, config_path):
+def example_basic_comparison(alt_km, n_orbits, model_name_path, config_path, mesh_path):
     """
     Basic comparison of all three models with default parameters
     """
@@ -61,13 +55,15 @@ def example_basic_comparison(alt_km, n_orbits, model_name_path, config_path):
     print("=" * 70)
 
     # Load mesh (create simple box if file not found)
-    mesh_path = "./mesh/spacecraft.stl"
+   
     mesh = MESH
-    if os.path.exists(mesh_path):
+    if mesh_path and os.path.exists(mesh_path):
         mesh = pv.read(mesh_path)
         print(f"\nMesh loaded: {mesh_path}")
+        scale_matrix = np.eye(3)
     plotter = pv.Plotter()
     plotter.add_mesh(mesh)
+    plotter.add_axes()
     #plotter.show()
     lx, ly, lz = mesh.bounds_size
     a_ref = (lx*ly + lx*lz + ly*lz) / 3
@@ -81,8 +77,15 @@ def example_basic_comparison(alt_km, n_orbits, model_name_path, config_path):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ann_models = {}
     try:
+        include_srp = False
+        include_drag = False
         ann_model = load_ann_model(model_path, device)
-        ann_models['drag_f'] = ann_model
+        if 'drag_f' in model_path:
+            include_drag = True
+            ann_models['drag_f'] = ann_model
+        elif 'srp_f' in model_path:
+            include_srp = True
+            ann_models['srp_f'] = ann_model
         print(f"ANN model loaded from: {model_path}")
     except:
         print(f"Warning: Could not load ANN model from {model_path}")
@@ -131,25 +134,33 @@ def example_basic_comparison(alt_km, n_orbits, model_name_path, config_path):
     print(f"  Altitude: {(a - R_EARTH) / 1000:.2f} km")
     print(f"  Period: {orbital_period / 60:.2f} minutes")
     print(f"  Inclination: {np.rad2deg(i):.1f} degrees")
+    
+
+    t_ = '2025-01-01 12:00:00'
+    dt = datetime.strptime(t_, '%Y-%m-%d %H:%M:%S')
+
+    # Convert to Julian Date
+    jd_ = 2440587.5 + dt.timestamp() / 86400.0
 
     # Simulation parameters
     sim_data = {
         'v_inf': np.linalg.norm(v0),
         'alt_km': (a - R_EARTH) / 1000,
-        'time_str': '2025-01-01 12:00:00',
+        'time_str': t_,
+        'jd': jd_,
         'sigma_N': 0.8,
         'sigma_T': 0.5,
         'T_wall': 300,
         'A_ref': a_ref,
         'spec_srp': 0.2,
         'diffuse_srp': 0.6,
-        'scale_shape': 1.0,
+        'scale_shape': scale_matrix,
     }
 
     # Propagate orbits
     results = {}
     # 1. Nominal
-    print("\nPropagating Ground Truth (Ray Tracing)...")
+    print("\nPropagating Nominal...")
     params_gt = {
         'model_type': 'nominal_j2',
         'mesh': None,
@@ -157,8 +168,8 @@ def example_basic_comparison(alt_km, n_orbits, model_name_path, config_path):
         'A_ref': a_ref,
         'ann_models': None,
         'mass': mass,
-        'include_drag': False,
-        'include_srp': False,
+        'include_drag': include_drag,
+        'include_srp': include_srp,
         'res_x': 500,  # Low resolution for speed
         'res_y': 500
     }
@@ -171,8 +182,8 @@ def example_basic_comparison(alt_km, n_orbits, model_name_path, config_path):
         'sim_data': sim_data,
         'A_ref': a_ref,
         'mass': mass,
-        'include_drag': True,
-        'include_srp': False
+        'include_drag': include_drag,
+        'include_srp': include_srp
     }
     results['spherical'] = propagate_orbit(state0, t_span, params_sph)
 
@@ -184,8 +195,8 @@ def example_basic_comparison(alt_km, n_orbits, model_name_path, config_path):
             'ann_models': ann_models,
             'sim_data': sim_data,
             'mass': mass,
-            'include_drag': True,
-            'include_srp': False,
+            'include_drag': include_drag,
+            'include_srp': include_srp,
             'device': device
         }
         results['ann'] = propagate_orbit(state0, t_span, params_ann)
@@ -199,12 +210,12 @@ def example_basic_comparison(alt_km, n_orbits, model_name_path, config_path):
         'A_ref': a_ref,
         'ann_models': ann_models,
         'mass': mass,
-        'include_drag': True,
-        'include_srp': False,
+        'include_drag': include_drag,
+        'include_srp': include_srp,
         'res_x': 1000,  # Low resolution for speed
         'res_y': 1000
     }
-    #results['ground_truth'] = propagate_orbit(state0, t_span, params_gt)
+    results['ground_truth'] = propagate_orbit(state0, t_span, params_gt)
 
     print("\nPropagating Ground Truth (Theory)...")
     params_gt = {
@@ -214,13 +225,13 @@ def example_basic_comparison(alt_km, n_orbits, model_name_path, config_path):
         'A_ref': a_ref,
         'ann_models': None,
         'mass': mass,
-        'include_drag': True,
-        'include_srp': False,
+        'include_drag': include_drag,
+        'include_srp': include_srp,
         'lx': lx,
         'ly': ly,
         'lz': lz,
     }
-    results['ground_truth'] = propagate_orbit(state0, t_span, params_gt)
+    #results['ground_truth'] = propagate_orbit(state0, t_span, params_gt)
     results['t_eval'] = t_eval
     return results
 
@@ -235,28 +246,33 @@ if __name__ == "__main__":
        
     # -----------------------------------------------------
     # user option
-    n_orbits = 0.1
+    n_orbits = 16
 
 
     out_dir = "./results/example_basic/"
     os.makedirs(out_dir, exist_ok=True)
     name = f"rect_prism_{n_orbits}.pkl"
     
-    model_name_path = "/rect_prism_data_1000_sample_10000/drag_f/"
-    config_path = "/config_264/"
+    model_name_path = "/aqua_b_data_1000_sample_20000/srp_f/"
+    #model_name_path = "/rect_prism_data_1000_sample_10000/drag_f/"
+    
+    config_path = "/config_239/" # aqua t
+    #config_path = "/config_168/" # rec
 
+    mesh_path = "./models/Aqua+(B).stl"
+    #mesh_path = None
     # Output directory
     out_dir = "./results/example_basic/" + model_name_path + config_path
     os.makedirs(out_dir, exist_ok=True)
 
     if not os.path.exists(out_dir + name):
-        results_300 = example_basic_comparison(300.0, n_orbits, model_name_path, config_path)
-        results_400 = example_basic_comparison(400.0, n_orbits, model_name_path, config_path)
-        results_500 = example_basic_comparison(500.0, n_orbits, model_name_path, config_path)
+        results_300 = example_basic_comparison(500.0, n_orbits, model_name_path, config_path, mesh_path)
+        results_400 = example_basic_comparison(1000.0, n_orbits, model_name_path, config_path, mesh_path)
+        results_500 = example_basic_comparison(1500.0, n_orbits, model_name_path, config_path, mesh_path)
         t_eval = results_500['t_eval']
-        results = {'300': results_300,
-                   '400': results_400,
-                   '500': results_500,
+        results = {'500': results_300,
+                   '1000': results_400,
+                   '1500': results_500,
                    't_eval': t_eval
                    }
         t_eval = results['t_eval']
@@ -269,13 +285,13 @@ if __name__ == "__main__":
 
     # Generate plots
     print("\nGenerating comparison plots...")
-    plot_orbit_comparison(results, t_eval, save_path=os.path.join(out_dir, 'orbit_comparison.png'))
-    plot_pos_vel_error(results, t_eval, save_path=os.path.join(out_dir, 'pos_vel_error.png'))
-    plot_orbit_hill_frame(results, t_eval, os.path.join(out_dir, 'hill_orbit_comparison.png'))
+    #plot_orbit_comparison(results, t_eval, save_path=os.path.join(out_dir, 'orbit_comparison.png'))
+    plot_pos_vel_error(results, t_eval, save_path=os.path.join(out_dir, 'pos_vel_error.png'), log_scale=True)
+    #plot_orbit_hill_frame(results, t_eval, os.path.join(out_dir, 'hill_orbit_comparison.png'))
 
-    if len(results) > 2:  # If ANN model is available
-        plot_error_statistics(results, t_eval,
-                                save_path=os.path.join(out_dir, 'errors.png'))
+    #if len(results) > 2:  # If ANN model is available
+    #    plot_error_statistics(results, t_eval,
+    #                            save_path=os.path.join(out_dir, 'errors.png'))
 
     # Print error summary
     print_error_summary(results, t_eval)

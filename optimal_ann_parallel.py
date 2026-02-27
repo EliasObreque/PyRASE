@@ -2,9 +2,9 @@
 """
 Optimal ANN Hyperparameter Search with PARALLEL EXECUTION
 Created by: O Break
-Version: 3.0 - Minimal parallel wrapper (keeps original code intact)
+Version: 3.0 
 
-Simply wraps the configuration loop in multiprocessing without changing any logic.
+Simply wraps the configuration loop in multiprocessing
 """
 
 import os
@@ -50,12 +50,13 @@ mpl.rcParams.update({
 
 # Data paths
 MAIN_FOLDER = "./results/data/"
-DATA_PATH = MAIN_FOLDER + "aqua_b_data_1000_sample_2000"
+#DATA_PATH = MAIN_FOLDER + "aqua_b_data_1000_sample_20000"
+DATA_PATH = MAIN_FOLDER + "rect_prism_data_1000_sample_10000"
 
 #DATA_PATH = MAIN_FOLDER + "rect_prism_data_1000_sample_10000"
 
 # Model type
-PERTURBATION_STATE = 'srp_f'
+PERTURBATION_STATE = 'drag_t'
 
 
 # Extract base filename for output folder
@@ -76,7 +77,7 @@ THRESHOLD_VALUE = None
 
 LAYERS_LIST = [3, 4, 5, 6, 7, 8]
 HIDDEN_LIST = [3, 4, 5, 6, 7, 8]
-ACT_LIST = ["relu", "tanh"]
+ACT_LIST = ["tanh"]
 LR_LIST = [1e-2, 1e-3]
 BATCH_LIST = [64, 128]
 SEEDS = [0, 1, 2]
@@ -87,7 +88,7 @@ PATIENCE = 100
 WEIGHT_DECAY = 1e-4
 
 # Parallelization settings
-N_WORKERS = max(1, int(cpu_count()-1))
+N_WORKERS = max(1, int(cpu_count() - 4))
 print(f"Available CPUs: {cpu_count()}, Using: {N_WORKERS} workers")
 
 # Device
@@ -348,10 +349,51 @@ def train_single_config(config_dict, config_id, seed_idx, seed):
         output_type=PERTURBATION_STATE,
         batch_size=config_dict['batch'],
         seed=seed,
-        normalization='minmax',
+        normalization='quantile',
         threshold=THRESHOLD_VALUE
     )
     train_loader, val_loader, test_loader, vX, vY, tX, tY, scaler, col_out = res_data
+
+    y_train_transformed = train_loader.dataset.tensors[1].cpu().numpy()
+
+    # Get original data for comparison
+    res_data_original = prepare_data_for_training(
+        data_mesh,
+        output_type=PERTURBATION_STATE,
+        batch_size=config_dict['batch'],
+        seed=seed,
+        normalization='none', #'quantile'
+        threshold=THRESHOLD_VALUE
+    )
+    y_train_original = res_data_original[0].dataset.tensors[1].cpu().numpy()
+
+    # Plot comparison
+    fig, axes = plt.subplots(2, 3, figsize=(10, 6))
+    fig.suptitle(r"Drag Torque $\tilde{\boldsymbol{\tau}}_{d}$ distribution")
+    # Row 1: Original
+    axes[0, 0].hist(y_train_original[:, 0], bins=50, alpha=0.7, color='blue')
+    axes[0, 0].set_xlabel("Original x-axis")
+    axes[0, 0].set_ylabel("Frequency")
+    axes[0, 1].hist(y_train_original[:, 1], bins=50, alpha=0.7, color='green')
+    axes[0, 1].set_xlabel("Original y-axis")
+    axes[0, 1].set_ylabel("Frequency")
+    axes[0, 2].hist(y_train_original[:, 2], bins=50, alpha=0.7, color='red')
+    axes[0, 2].set_xlabel("Original z-axis")
+    axes[0, 2].set_ylabel("Frequency")
+
+    # Row 2: After transform
+    axes[1, 0].hist(y_train_transformed[:, 0], bins=50, alpha=0.7, color='blue')
+    axes[1, 0].set_xlabel("Transformed x-axis")
+    axes[1, 1].hist(y_train_transformed[:, 1], bins=50, alpha=0.7, color='green')
+    axes[1, 1].set_xlabel("Transformed y-axis")
+    axes[1, 2].hist(y_train_transformed[:, 2], bins=50, alpha=0.7, color='red')
+    axes[1, 2].set_xlabel("Transformed z-axis")
+    axes[1, 0].set_ylabel("Frequency")
+    axes[1, 1].set_ylabel("Frequency")
+    axes[1, 2].set_ylabel("Frequency")
+    plt.tight_layout()
+    plt.show()
+
 
     # Create model
     in_dim = len(train_loader.dataset.tensors[0][0])

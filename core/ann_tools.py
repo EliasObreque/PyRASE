@@ -200,7 +200,7 @@ def quantile_scale_outputs(train_df, val_df, test_df, col_out):
     
     for col in col_out:
         # Fit transformer on training data only
-        qt = QuantileTransformer(output_distribution='uniform', n_quantiles=1000)
+        qt = QuantileTransformer(output_distribution='uniform', n_quantiles=4000)
         qt.fit(train_df[[col]])
         scalers[col] = qt
         
@@ -230,7 +230,7 @@ def prepare_data_for_training(data_mesh, output_type='drag', batch_size=32, seed
     
     # 2. Non-dimensionalize
     df = factor_targets(df, data_mesh['sim_data'])
-    print("-----------------------------------",output_type )
+    print("-----------------------------------", output_type )
     # 3. Select outputs
     if output_type == 'drag_f':
         col_out = COL_OUT_DRAG_F
@@ -248,7 +248,7 @@ def prepare_data_for_training(data_mesh, output_type='drag', batch_size=32, seed
         col_out = COL_OUT_ALL
     else:
         raise ValueError("output_type must be 'drag', 'srp', or 'all'")
-    
+    print("-----------------------------------", col_out )
     # 4. Split FIRST
     train_df, tmp = train_test_split(df, test_size=0.30, random_state=seed)
     val_df, test_df = train_test_split(tmp, test_size=0.5, random_state=seed)

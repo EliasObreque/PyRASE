@@ -76,6 +76,60 @@ def j2_acceleration(r_eci):
     return a_j2
 
 
+def sun_position_eci(jd):
+    """
+    Compute the Sun position vector in ECI (Earth-Centered Inertial) frame.
+    
+    Based on the Astronomical Almanac low-precision solar coordinates.
+    
+    Parameters
+    ----------
+    jd : float
+        Julian Date
+    
+    Returns
+    -------
+    r_sun : np.ndarray
+        Sun position vector in ECI [km], shape (3,)
+    """
+    # Julian centuries from J2000.0
+    T = (jd - 2451545.0) / 36525.0
+
+    # Mean longitude of the Sun [deg]
+    L0 = 280.46646 + 36000.76983 * T + 0.0003032 * T**2
+    L0 = L0 % 360.0
+
+    # Mean anomaly of the Sun [deg]
+    M = 357.52911 + 35999.05029 * T - 0.0001537 * T**2
+    M_rad = np.radians(M % 360.0)
+
+    # Equation of center [deg]
+    C = (1.914602 - 0.004817 * T - 0.000014 * T**2) * np.sin(M_rad) \
+      + (0.019993 - 0.000101 * T) * np.sin(2 * M_rad) \
+      + 0.000289 * np.sin(3 * M_rad)
+
+    # Sun's true longitude and true anomaly [deg]
+    sun_lon = np.radians((L0 + C) % 360.0)
+    nu = M + C
+
+    # Sun-Earth distance [AU]
+    e = 0.016708634 - 0.000042037 * T - 0.0000001267 * T**2
+    r_au = 1.000001018 * (1 - e**2) / (1 + e * np.cos(np.radians(nu)))
+
+    # Obliquity of the ecliptic [deg]
+    epsilon = np.radians(23.439291 - 0.0130042 * T)
+
+    # Convert to ECI (equatorial) coordinates
+    r_km = r_au * 149597870.7  # AU to km
+
+    r_sun = r_km * np.array([
+        np.cos(sun_lon),
+        np.cos(epsilon) * np.sin(sun_lon),
+        np.sin(epsilon) * np.sin(sun_lon)
+    ])
+
+    return r_sun
+
 def orbital_derivatives(t, state, params):
     """
     Compute orbital state derivatives with perturbations
@@ -125,9 +179,13 @@ def orbital_derivatives(t, state, params):
     sim_data = params['sim_data']
     sim_data['alt_km'] = (r_mag - R_EARTH) / 1000
     sim_data['v_inf'] = np.linalg.norm(v_eci)
+    
+    jd_ = sim_data['jd']
+    sun_dir = sun_position_eci(jd_)
+    sun_dir /= np.linalg.norm(sun_dir)
+
     if sim_data['alt_km'] < 150:
         dstate = np.zeros(6)
-
         return dstate
     if model_type == 'ground_truth':
         # Ray tracing model
@@ -136,30 +194,42 @@ def orbital_derivatives(t, state, params):
         res_y = params.get('res_y', 50)
         mass = params['mass']
 
-        # Velocity in body frame (assume body = ECI for now, can add rotation if needed)
-        v_body = -v_eci
-        v_mag = np.linalg.norm(v_body)
+ 
+        if params['include_drag']:
+            # Velocity in body frame (assume body = ECI for now, can add rotation if needed)
+            v_body = -v_eci
+            v_mag = np.linalg.norm(v_body)
+            if v_mag > 1e-6:
+                r_inout = v_body / v_mag
 
-        if v_mag > 1e-6:
-            r_inout = v_body / v_mag
+                # Compute ray tracing
+                res_prop = compute_ray_tracing_fast_optimized(mesh, r_inout, res_x, res_y, verbose=0)
+
+                # Compute forces
+                F_drag_total, T_drag_total, F_srp_total, T_srp_total = compute_ray_perturbation_step(
+                    res_prop, sim_data
+                )
+            
+                a_pert += F_drag_total / mass
+        if params['include_srp']:
+            r_inout = sun_dir
 
             # Compute ray tracing
             res_prop = compute_ray_tracing_fast_optimized(mesh, r_inout, res_x, res_y, verbose=0)
 
             # Compute forces
             F_drag_total, T_drag_total, F_srp_total, T_srp_total = compute_ray_perturbation_step(
-                res_prop, sim_data
-            )
-
-            if params['include_drag']:
-                a_pert += F_drag_total / mass
-            if params['include_srp']:
-                a_pert += F_srp_total / mass
+                res_prop, sim_data)
+            a_pert += F_srp_total / mass
     elif model_type == 'ground_truth_theory':
         v_body = -v_eci
         mass = params['mass']
-        F_drag_total = compute_analytical_prism_step(v_body, sim_data, params)
-        a_pert += F_drag_total / mass
+        if params['include_drag']:
+            F_drag_total = compute_analytical_prism_step(v_body, sim_data, params)
+            a_pert += F_drag_total / mass
+        if params['include_srp']:
+            F_srp_total = np.zeros(3)
+            a_pert += F_srp_total / mass
     elif model_type == 'spherical':
         # Spherical approximation
         A_ref = params['A_ref']
@@ -173,8 +243,6 @@ def orbital_derivatives(t, state, params):
 
         if params['include_srp']:
             # Sun direction (simplified: assume constant)
-            # TODO: Can be improved with proper ephemeris
-            sun_dir = np.array([1, 0, 0])
             F_srp = spherical_srp_force(sun_dir, sim_data, A_ref)
             a_pert += F_srp / mass
 
@@ -189,8 +257,10 @@ def orbital_derivatives(t, state, params):
         # Predict drag force and torque
         if params['include_drag']:
             q_ = get_dynamic_pressure(v_body, sim_data['alt_km'], sim_data['time_str'])
-            F_drag = q_ * ann_predict_force(v_body, ann_models.get('drag_f'), device) * sim_data.get("scale_shape", 1.0)
-            T_drag = q_ * ann_predict_torque(v_body, ann_models.get('drag_t'), device) * sim_data.get("scale_shape", 1.0)
+
+            scale_matrix = sim_data.get("scale_shape", np.eye(3))
+            F_drag = q_ * scale_matrix @ ann_predict_force(v_body, ann_models.get('drag_f'), device)
+            T_drag = q_ * scale_matrix @ ann_predict_torque(v_body, ann_models.get('drag_t'), device)
 
             a_pert += F_drag / mass
             # Note: Torque doesn't affect translational motion directly
@@ -198,11 +268,10 @@ def orbital_derivatives(t, state, params):
         # Predict SRP force and torque
         if params['include_srp']:
             # For SRP, we need sun direction (simplified here)
-            sun_dir = np.array([1, 0, 0])
-
             P_SRP = 4.56e-6  # N/m^2
             F_srp = P_SRP * ann_predict_force(sun_dir, ann_models.get('srp_f'), device)
             T_srp = P_SRP * ann_predict_torque(sun_dir, ann_models.get('srp_t'), device)
+
             a_pert += F_srp / mass
             # Note: Torque doesn't affect translational motion directly
     elif model_type == "nominal_j2":
@@ -220,7 +289,7 @@ def orbital_derivatives(t, state, params):
 # ORBIT PROPAGATION
 # ==========================
 
-def propagate_orbit(state0, t_span, params, method='RK45', rtol=1e-12, atol=1e-15,
+def propagate_orbit(state0, t_span, params, method='RK45', rtol=1e-9, atol=1e-12,
                     show_progress=True, desc="Propagating orbit"):
     """
     Propagate orbit with specified perturbations
